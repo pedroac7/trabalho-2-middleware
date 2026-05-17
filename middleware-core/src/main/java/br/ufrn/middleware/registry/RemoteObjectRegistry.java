@@ -1,8 +1,13 @@
 package br.ufrn.middleware.registry;
 
+import br.ufrn.middleware.annotations.Lifecycle;
 import br.ufrn.middleware.annotations.RemoteComponent;
 import br.ufrn.middleware.annotations.RemoteMethod;
+import br.ufrn.middleware.identification.LocalLookup;
+import br.ufrn.middleware.identification.Lookup;
+import br.ufrn.middleware.lifecycle.LifecycleType;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,6 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 public class RemoteObjectRegistry {
     private final Map<String, RemoteObjectDescriptor> componentsByName = new ConcurrentHashMap<>();
@@ -20,7 +28,60 @@ public class RemoteObjectRegistry {
             throw new IllegalArgumentException("Target instance must not be null.");
         }
 
+        // Registering by instance is always treated as STATIC_INSTANCE.
         Class<?> targetClass = targetInstance.getClass();
+        registerInternal(targetClass, LifecycleType.STATIC_INSTANCE, targetInstance, () -> targetInstance);
+    }
+
+    public void register(Class<?> targetClass) {
+        if (targetClass == null) {
+            throw new IllegalArgumentException("Target class must not be null.");
+        }
+
+        LifecycleType lifecycleType = resolveLifecycleType(targetClass);
+        Supplier<Object> targetProvider = createTargetProvider(targetClass, lifecycleType);
+
+        Object descriptorTargetInstance = null;
+        if (lifecycleType == LifecycleType.STATIC_INSTANCE) {
+            descriptorTargetInstance = targetProvider.get();
+        }
+
+        registerInternal(targetClass, lifecycleType, descriptorTargetInstance, targetProvider);
+    }
+
+    public Optional<RemoteObjectDescriptor> findComponent(String componentName) {
+        if (componentName == null || componentName.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(componentsByName.get(normalizeComponentName(componentName)));
+    }
+
+    public Optional<RemoteMethodDescriptor> findMethod(String httpMethod, String path) {
+        if (httpMethod == null || httpMethod.isBlank() || path == null || path.isBlank()) {
+            return Optional.empty();
+        }
+        String routeKey = buildRouteKey(normalizeHttpMethod(httpMethod), normalizePath(path));
+        return Optional.ofNullable(methodsByRoute.get(routeKey));
+    }
+
+    public List<RemoteObjectDescriptor> getComponents() {
+        return List.copyOf(componentsByName.values());
+    }
+
+    public List<RemoteMethodDescriptor> getMethods() {
+        return List.copyOf(methodsByRoute.values());
+    }
+
+    public Lookup asLookup() {
+        return new LocalLookup(this);
+    }
+
+    private void registerInternal(
+            Class<?> targetClass,
+            LifecycleType lifecycleType,
+            Object descriptorTargetInstance,
+            Supplier<Object> targetProvider
+    ) {
         RemoteComponent remoteComponent = targetClass.getAnnotation(RemoteComponent.class);
         if (remoteComponent == null) {
             throw new IllegalArgumentException(
@@ -58,7 +119,7 @@ public class RemoteObjectRegistry {
                     componentName,
                     httpMethod,
                     fullPath,
-                    targetInstance,
+                    targetProvider,
                     method
             );
 
@@ -86,8 +147,9 @@ public class RemoteObjectRegistry {
 
         RemoteObjectDescriptor remoteObjectDescriptor = new RemoteObjectDescriptor(
                 componentName,
-                targetInstance,
+                descriptorTargetInstance,
                 targetClass,
+                lifecycleType,
                 methodDescriptors
         );
 
@@ -102,27 +164,72 @@ public class RemoteObjectRegistry {
         }
     }
 
-    public Optional<RemoteObjectDescriptor> findComponent(String componentName) {
-        if (componentName == null || componentName.isBlank()) {
-            return Optional.empty();
+    private LifecycleType resolveLifecycleType(Class<?> targetClass) {
+        Lifecycle lifecycle = targetClass.getAnnotation(Lifecycle.class);
+        return lifecycle == null ? LifecycleType.STATIC_INSTANCE : lifecycle.value();
+    }
+
+    private Supplier<Object> createTargetProvider(Class<?> targetClass, LifecycleType lifecycleType) {
+        if (lifecycleType == LifecycleType.STATIC_INSTANCE) {
+            Object staticInstance = instantiateWithDefaultConstructor(targetClass);
+            return () -> staticInstance;
         }
-        return Optional.ofNullable(componentsByName.get(normalizeComponentName(componentName)));
-    }
 
-    public Optional<RemoteMethodDescriptor> findMethod(String httpMethod, String path) {
-        if (httpMethod == null || httpMethod.isBlank() || path == null || path.isBlank()) {
-            return Optional.empty();
+        if (lifecycleType == LifecycleType.PER_REQUEST_INSTANCE) {
+            return () -> instantiateWithDefaultConstructor(targetClass);
         }
-        String routeKey = buildRouteKey(normalizeHttpMethod(httpMethod), normalizePath(path));
-        return Optional.ofNullable(methodsByRoute.get(routeKey));
+
+        if (lifecycleType == LifecycleType.LAZY_ACQUISITION) {
+            AtomicReference<Object> lazyInstance = new AtomicReference<>();
+            Object lock = new Object();
+            return () -> {
+                Object instance = lazyInstance.get();
+                if (instance != null) {
+                    return instance;
+                }
+
+                synchronized (lock) {
+                    instance = lazyInstance.get();
+                    if (instance == null) {
+                        instance = instantiateWithDefaultConstructor(targetClass);
+                        lazyInstance.set(instance);
+                    }
+                    return instance;
+                }
+            };
+        }
+
+        if (lifecycleType == LifecycleType.POOLING) {
+            int poolSize = 5;
+            List<Object> pool = new ArrayList<>(poolSize);
+            for (int i = 0; i < poolSize; i++) {
+                pool.add(instantiateWithDefaultConstructor(targetClass));
+            }
+
+            List<Object> immutablePool = List.copyOf(pool);
+            AtomicInteger counter = new AtomicInteger(0);
+            return () -> {
+                int index = Math.floorMod(counter.getAndIncrement(), immutablePool.size());
+                return immutablePool.get(index);
+            };
+        }
+
+        throw new IllegalArgumentException(
+                "Lifecycle type '" + lifecycleType + "' is not implemented yet."
+        );
     }
 
-    public List<RemoteObjectDescriptor> getComponents() {
-        return List.copyOf(componentsByName.values());
-    }
-
-    public List<RemoteMethodDescriptor> getMethods() {
-        return List.copyOf(methodsByRoute.values());
+    private Object instantiateWithDefaultConstructor(Class<?> targetClass) {
+        try {
+            Constructor<?> constructor = targetClass.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "Could not instantiate class " + targetClass.getName() + " using default constructor.",
+                    exception
+            );
+        }
     }
 
     private static String normalizeComponentName(String componentName) {
