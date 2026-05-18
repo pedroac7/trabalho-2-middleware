@@ -70,3 +70,10 @@ O servidor usa `UdpProtocolPlugin`.
 O cliente usa `Requestor` + `UdpClientRequestHandler`.
 A seleção do handler no cliente é feita pelo protocolo da `AbsoluteObjectReference`, por exemplo `udp://localhost:9091/calculadora`.
 UDP usa datagramas, então não há conexão persistente.
+
+## Marshaller
+
+- `ResponseMarshaller` serializa `InvocationResponse` para JSON textual.
+- `InvocationRequestMarshaller` serializa e desserializa mensagens de invocação TCP/UDP.
+- HTTP mantém parsing próprio de requisição por causa do formato HTTP, mas converte tudo para `InvocationRequest`.
+- Todos os protocolos convergem para `InvocationRequest` e `InvocationResponse`.

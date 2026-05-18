@@ -7,7 +7,11 @@ import br.ufrn.middleware.error.BindingException;
 import br.ufrn.middleware.error.InvocationException;
 import br.ufrn.middleware.error.RemoteMethodNotFoundException;
 import br.ufrn.middleware.error.RemotingException;
+import br.ufrn.middleware.marshaller.InvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.MarshallingException;
 import br.ufrn.middleware.marshaller.ResponseMarshaller;
+import br.ufrn.middleware.marshaller.SimpleTextInvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.TextInvocationMessage;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -16,15 +20,14 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class TcpProtocolPlugin implements ProtocolPlugin {
     private final int port;
+    private final InvocationRequestMarshaller invocationRequestMarshaller;
+
     private ServerSocket serverSocket;
     private ExecutorService executor;
     private volatile boolean running;
@@ -37,6 +40,7 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
         this.port = port;
+        this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
     }
 
     @Override
@@ -119,17 +123,18 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
             OutputStream outputStream = clientSocket.getOutputStream();
 
             try {
-                ParsedTcpRequest parsedRequest = parseRequest(inputStream);
+                byte[] requestBytes = readRequestBytes(inputStream);
+                TextInvocationMessage message = invocationRequestMarshaller.unmarshal(requestBytes);
                 InvocationRequest invocationRequest = new InvocationRequest(
-                        parsedRequest.method,
-                        parsedRequest.path,
-                        parsedRequest.queryParams,
-                        parsedRequest.body
+                        message.getMethod(),
+                        message.getPath(),
+                        message.getQueryParams(),
+                        message.getBody()
                 );
 
                 InvocationResponse response = broker.handle(invocationRequest);
                 writeJson(outputStream, responseMarshaller.marshal(response));
-            } catch (BadRequestException exception) {
+            } catch (MarshallingException exception) {
                 writeErrorResponse(outputStream, 400, exception.getMessage());
             } catch (RemoteMethodNotFoundException exception) {
                 writeErrorResponse(outputStream, 404, exception.getMessage());
@@ -146,80 +151,59 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
         }
     }
 
-    private ParsedTcpRequest parseRequest(InputStream inputStream) throws IOException, BadRequestException {
-        Map<String, String> fields = new HashMap<>();
+    private byte[] readRequestBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        String bodyLengthRaw = null;
 
         while (true) {
             String line = readLine(inputStream);
             if (line == null) {
-                throw new BadRequestException("Unexpected end of request.");
+                throw new MarshallingException("Invalid request message: unexpected end of request.");
             }
+
+            output.write(line.getBytes(StandardCharsets.UTF_8));
+            output.write('\n');
+
             if (line.isEmpty()) {
                 break;
             }
 
-            int separatorIndex = line.indexOf(' ');
-            String key;
-            String value;
-
-            if (separatorIndex < 0) {
-                key = line.trim().toUpperCase();
-                value = "";
-            } else {
-                key = line.substring(0, separatorIndex).trim().toUpperCase();
-                value = line.substring(separatorIndex + 1).trim();
+            if (line.startsWith("BODY_LENGTH")) {
+                int separatorIndex = line.indexOf(' ');
+                bodyLengthRaw = separatorIndex < 0 ? "" : line.substring(separatorIndex + 1).trim();
             }
-
-            if (key.isEmpty()) {
-                throw new BadRequestException("Invalid request field.");
-            }
-            fields.put(key, value);
         }
 
-        String method = fields.get("METHOD");
-        String path = fields.get("PATH");
-        String bodyLengthRaw = fields.get("BODY_LENGTH");
-        String query = fields.getOrDefault("QUERY", "");
-
-        if (method == null || method.isBlank()) {
-            throw new BadRequestException("Missing METHOD field.");
-        }
-        if (path == null || path.isBlank()) {
-            throw new BadRequestException("Missing PATH field.");
-        }
         if (bodyLengthRaw == null || bodyLengthRaw.isBlank()) {
-            throw new BadRequestException("Missing BODY_LENGTH field.");
+            throw new MarshallingException("Invalid request message: missing BODY_LENGTH field.");
         }
 
         int bodyLength = parseBodyLength(bodyLengthRaw);
-        String body = bodyLength > 0
-                ? new String(readExactBytes(inputStream, bodyLength), StandardCharsets.UTF_8)
-                : null;
-
-        Map<String, String> queryParams = parseQueryString(query);
-        return new ParsedTcpRequest(method, path, queryParams, body);
+        byte[] bodyBytes = readExactBytes(inputStream, bodyLength);
+        output.write(bodyBytes);
+        return output.toByteArray();
     }
 
-    private int parseBodyLength(String bodyLengthRaw) throws BadRequestException {
+    private int parseBodyLength(String bodyLengthRaw) {
         try {
             int bodyLength = Integer.parseInt(bodyLengthRaw.trim());
             if (bodyLength < 0) {
-                throw new BadRequestException("Invalid BODY_LENGTH value.");
+                throw new MarshallingException("Invalid request message: BODY_LENGTH must be >= 0.");
             }
             return bodyLength;
         } catch (NumberFormatException exception) {
-            throw new BadRequestException("Invalid BODY_LENGTH value.");
+            throw new MarshallingException("Invalid request message: BODY_LENGTH must be an integer.", exception);
         }
     }
 
-    private byte[] readExactBytes(InputStream inputStream, int byteCount) throws IOException, BadRequestException {
+    private byte[] readExactBytes(InputStream inputStream, int byteCount) throws IOException {
         byte[] data = new byte[byteCount];
         int offset = 0;
 
         while (offset < byteCount) {
             int bytesRead = inputStream.read(data, offset, byteCount - offset);
             if (bytesRead == -1) {
-                throw new BadRequestException("Unexpected end of request body.");
+                throw new MarshallingException("Invalid request message: truncated body.");
             }
             offset += bytesRead;
         }
@@ -252,49 +236,6 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
         return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    private Map<String, String> parseQueryString(String query) throws BadRequestException {
-        if (query == null || query.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<String, String> params = new HashMap<>();
-        String[] pairs = query.split("&");
-
-        for (String pair : pairs) {
-            if (pair.isEmpty()) {
-                continue;
-            }
-
-            String rawKey;
-            String rawValue;
-            int separatorIndex = pair.indexOf('=');
-            if (separatorIndex < 0) {
-                rawKey = pair;
-                rawValue = "";
-            } else {
-                rawKey = pair.substring(0, separatorIndex);
-                rawValue = pair.substring(separatorIndex + 1);
-            }
-
-            try {
-                String key = URLDecoder.decode(rawKey, StandardCharsets.UTF_8);
-                if (key.isEmpty()) {
-                    continue;
-                }
-
-                String value = URLDecoder.decode(rawValue, StandardCharsets.UTF_8);
-                params.put(key, value);
-            } catch (IllegalArgumentException exception) {
-                throw new BadRequestException("Invalid query string.");
-            }
-        }
-
-        if (params.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(params);
-    }
-
     private void writeErrorResponse(OutputStream outputStream, int statusCode, String message) throws IOException {
         String errorMessage = message == null || message.isBlank() ? reasonPhraseForStatus(statusCode) : message;
         InvocationResponse response = InvocationResponse.error(statusCode, errorMessage);
@@ -315,25 +256,5 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
             case 500 -> "Internal Server Error";
             default -> "Status";
         };
-    }
-
-    private static final class ParsedTcpRequest {
-        private final String method;
-        private final String path;
-        private final Map<String, String> queryParams;
-        private final String body;
-
-        private ParsedTcpRequest(String method, String path, Map<String, String> queryParams, String body) {
-            this.method = method;
-            this.path = path;
-            this.queryParams = queryParams;
-            this.body = body;
-        }
-    }
-
-    private static final class BadRequestException extends Exception {
-        private BadRequestException(String message) {
-            super(message);
-        }
     }
 }

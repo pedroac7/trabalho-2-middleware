@@ -5,8 +5,10 @@ import br.ufrn.middleware.client.Requestor;
 import br.ufrn.middleware.identification.Lookup;
 import br.ufrn.middleware.interceptor.InvocationInterceptor;
 import br.ufrn.middleware.invoker.Invoker;
+import br.ufrn.middleware.marshaller.InvocationRequestMarshaller;
 import br.ufrn.middleware.marshaller.ResponseMarshaller;
 import br.ufrn.middleware.marshaller.SimpleJsonResponseMarshaller;
+import br.ufrn.middleware.marshaller.SimpleTextInvocationRequestMarshaller;
 import br.ufrn.middleware.protocol.ProtocolPlugin;
 import br.ufrn.middleware.registry.RemoteObjectRegistry;
 
@@ -18,6 +20,7 @@ public class Middleware {
     private final Invoker invoker;
     private final ParameterBinder parameterBinder;
     private final Broker broker;
+    private final InvocationRequestMarshaller invocationRequestMarshaller;
     private final ResponseMarshaller responseMarshaller;
     private final Requestor requestor;
     private final List<ProtocolPlugin> protocolPlugins;
@@ -29,6 +32,7 @@ public class Middleware {
         this.parameterBinder = new ParameterBinder();
         this.interceptors = new CopyOnWriteArrayList<>();
         this.broker = new Broker(registry, parameterBinder, invoker, interceptors);
+        this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
         this.responseMarshaller = new SimpleJsonResponseMarshaller();
         this.requestor = new Requestor();
         this.protocolPlugins = new CopyOnWriteArrayList<>();
@@ -62,6 +66,10 @@ public class Middleware {
 
     public ResponseMarshaller getResponseMarshaller() {
         return responseMarshaller;
+    }
+
+    public InvocationRequestMarshaller getInvocationRequestMarshaller() {
+        return invocationRequestMarshaller;
     }
 
     public Requestor getRequestor() {

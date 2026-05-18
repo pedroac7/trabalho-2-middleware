@@ -2,15 +2,15 @@ package br.ufrn.middleware.client;
 
 import br.ufrn.middleware.error.RemotingException;
 import br.ufrn.middleware.identification.AbsoluteObjectReference;
+import br.ufrn.middleware.marshaller.InvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.SimpleTextInvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.TextInvocationMessage;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketTimeoutException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,20 +21,33 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
 
     private final int timeoutMillis;
     private final int maxPacketSize;
+    private final InvocationRequestMarshaller invocationRequestMarshaller;
 
     public UdpClientRequestHandler() {
-        this(DEFAULT_TIMEOUT_MILLIS, DEFAULT_MAX_PACKET_SIZE);
+        this(DEFAULT_TIMEOUT_MILLIS, DEFAULT_MAX_PACKET_SIZE, new SimpleTextInvocationRequestMarshaller());
     }
 
     public UdpClientRequestHandler(int timeoutMillis, int maxPacketSize) {
+        this(timeoutMillis, maxPacketSize, new SimpleTextInvocationRequestMarshaller());
+    }
+
+    public UdpClientRequestHandler(
+            int timeoutMillis,
+            int maxPacketSize,
+            InvocationRequestMarshaller invocationRequestMarshaller
+    ) {
         if (timeoutMillis <= 0) {
             throw new IllegalArgumentException("timeoutMillis must be greater than zero.");
         }
         if (maxPacketSize <= 0) {
             throw new IllegalArgumentException("maxPacketSize must be greater than zero.");
         }
+        if (invocationRequestMarshaller == null) {
+            throw new IllegalArgumentException("InvocationRequestMarshaller must not be null.");
+        }
         this.timeoutMillis = timeoutMillis;
         this.maxPacketSize = maxPacketSize;
+        this.invocationRequestMarshaller = invocationRequestMarshaller;
     }
 
     @Override
@@ -84,59 +97,19 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
 
     private byte[] buildPayload(RemoteInvocationRequest request) {
         AbsoluteObjectReference reference = request.getObjectReference();
-        String method = request.getHttpMethod();
-        String path = buildPath(reference, request.getRemotePath());
-        String query = buildQueryString(request.getQueryParams());
-        String body = request.getBody() == null ? "" : request.getBody();
-        byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
-
-        StringBuilder headerBuilder = new StringBuilder();
-        headerBuilder.append("METHOD ").append(method).append('\n');
-        headerBuilder.append("PATH ").append(path).append('\n');
-        headerBuilder.append("QUERY");
-        if (!query.isEmpty()) {
-            headerBuilder.append(' ').append(query);
-        }
-        headerBuilder.append('\n');
-        headerBuilder.append("BODY_LENGTH ").append(bodyBytes.length).append('\n');
-        headerBuilder.append('\n');
-
-        byte[] headerBytes = headerBuilder.toString().getBytes(StandardCharsets.UTF_8);
-        ByteArrayOutputStream payloadStream = new ByteArrayOutputStream(headerBytes.length + bodyBytes.length);
-        payloadStream.writeBytes(headerBytes);
-        payloadStream.writeBytes(bodyBytes);
-        return payloadStream.toByteArray();
+        TextInvocationMessage message = new TextInvocationMessage(
+                request.getHttpMethod(),
+                buildPath(reference, request.getRemotePath()),
+                request.getQueryParams(),
+                request.getBody()
+        );
+        return invocationRequestMarshaller.marshal(message);
     }
 
     private String buildPath(AbsoluteObjectReference reference, String remotePath) {
         String objectIdPath = "/" + reference.getObjectId().getValue();
         String methodPath = remotePath.startsWith("/") ? remotePath : "/" + remotePath;
         return (objectIdPath + methodPath).replaceAll("/+", "/");
-    }
-
-    private String buildQueryString(Map<String, String> queryParams) {
-        if (queryParams == null || queryParams.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder queryBuilder = new StringBuilder();
-        for (Map.Entry<String, String> entry : queryParams.entrySet()) {
-            String key = entry.getKey();
-            if (key == null || key.isBlank()) {
-                continue;
-            }
-
-            if (queryBuilder.length() > 0) {
-                queryBuilder.append('&');
-            }
-
-            String value = entry.getValue() == null ? "" : entry.getValue();
-            queryBuilder.append(URLEncoder.encode(key, StandardCharsets.UTF_8));
-            queryBuilder.append('=');
-            queryBuilder.append(URLEncoder.encode(value, StandardCharsets.UTF_8));
-        }
-
-        return queryBuilder.toString();
     }
 
     private int inferStatusCode(String responseBody) {

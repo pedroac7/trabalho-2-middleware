@@ -7,20 +7,18 @@ import br.ufrn.middleware.error.BindingException;
 import br.ufrn.middleware.error.InvocationException;
 import br.ufrn.middleware.error.RemoteMethodNotFoundException;
 import br.ufrn.middleware.error.RemotingException;
+import br.ufrn.middleware.marshaller.InvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.MarshallingException;
 import br.ufrn.middleware.marshaller.ResponseMarshaller;
+import br.ufrn.middleware.marshaller.SimpleTextInvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.TextInvocationMessage;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,6 +27,7 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
 
     private final int port;
     private final int maxPacketSize;
+    private final InvocationRequestMarshaller invocationRequestMarshaller;
 
     private DatagramSocket socket;
     private ExecutorService executor;
@@ -50,6 +49,7 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
         }
         this.port = port;
         this.maxPacketSize = maxPacketSize;
+        this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
     }
 
     @Override
@@ -135,17 +135,17 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
 
     private void handlePacket(byte[] packetData, java.net.InetAddress sourceAddress, int sourcePort) {
         try {
-            ParsedUdpRequest parsedRequest = parseRequest(packetData);
+            TextInvocationMessage message = invocationRequestMarshaller.unmarshal(packetData);
             InvocationRequest invocationRequest = new InvocationRequest(
-                    parsedRequest.method,
-                    parsedRequest.path,
-                    parsedRequest.queryParams,
-                    parsedRequest.body
+                    message.getMethod(),
+                    message.getPath(),
+                    message.getQueryParams(),
+                    message.getBody()
             );
 
             InvocationResponse response = broker.handle(invocationRequest);
             sendJson(sourceAddress, sourcePort, responseMarshaller.marshal(response));
-        } catch (BadRequestException exception) {
+        } catch (MarshallingException exception) {
             sendErrorResponse(sourceAddress, sourcePort, 400, exception.getMessage());
         } catch (RemoteMethodNotFoundException exception) {
             sendErrorResponse(sourceAddress, sourcePort, 404, exception.getMessage());
@@ -158,160 +158,6 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
         } catch (Exception exception) {
             sendErrorResponse(sourceAddress, sourcePort, 500, "Unexpected server error.");
         }
-    }
-
-    private ParsedUdpRequest parseRequest(byte[] packetData) throws BadRequestException {
-        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(packetData)) {
-            Map<String, String> fields = new HashMap<>();
-
-            while (true) {
-                String line = readLine(inputStream);
-                if (line == null) {
-                    throw new BadRequestException("Unexpected end of request.");
-                }
-                if (line.isEmpty()) {
-                    break;
-                }
-
-                int separatorIndex = line.indexOf(' ');
-                String key;
-                String value;
-
-                if (separatorIndex < 0) {
-                    key = line.trim().toUpperCase();
-                    value = "";
-                } else {
-                    key = line.substring(0, separatorIndex).trim().toUpperCase();
-                    value = line.substring(separatorIndex + 1).trim();
-                }
-
-                if (key.isEmpty()) {
-                    throw new BadRequestException("Invalid request field.");
-                }
-
-                fields.put(key, value);
-            }
-
-            String method = fields.get("METHOD");
-            String path = fields.get("PATH");
-            String bodyLengthRaw = fields.get("BODY_LENGTH");
-            String query = fields.getOrDefault("QUERY", "");
-
-            if (method == null || method.isBlank()) {
-                throw new BadRequestException("Missing METHOD field.");
-            }
-            if (path == null || path.isBlank()) {
-                throw new BadRequestException("Missing PATH field.");
-            }
-            if (bodyLengthRaw == null || bodyLengthRaw.isBlank()) {
-                throw new BadRequestException("Missing BODY_LENGTH field.");
-            }
-
-            int bodyLength = parseBodyLength(bodyLengthRaw);
-            String body = bodyLength > 0
-                    ? new String(readExactBytes(inputStream, bodyLength), StandardCharsets.UTF_8)
-                    : null;
-
-            Map<String, String> queryParams = parseQueryString(query);
-            return new ParsedUdpRequest(method, path, queryParams, body);
-        } catch (IOException exception) {
-            throw new BadRequestException("Failed to parse UDP request.");
-        }
-    }
-
-    private int parseBodyLength(String bodyLengthRaw) throws BadRequestException {
-        try {
-            int bodyLength = Integer.parseInt(bodyLengthRaw.trim());
-            if (bodyLength < 0) {
-                throw new BadRequestException("Invalid BODY_LENGTH value.");
-            }
-            return bodyLength;
-        } catch (NumberFormatException exception) {
-            throw new BadRequestException("Invalid BODY_LENGTH value.");
-        }
-    }
-
-    private byte[] readExactBytes(InputStream inputStream, int byteCount) throws IOException, BadRequestException {
-        byte[] data = new byte[byteCount];
-        int offset = 0;
-
-        while (offset < byteCount) {
-            int bytesRead = inputStream.read(data, offset, byteCount - offset);
-            if (bytesRead == -1) {
-                throw new BadRequestException("Unexpected end of request body.");
-            }
-            offset += bytesRead;
-        }
-
-        return data;
-    }
-
-    private String readLine(InputStream inputStream) throws IOException {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        boolean readAnyByte = false;
-
-        while (true) {
-            int currentByte = inputStream.read();
-            if (currentByte == -1) {
-                break;
-            }
-            readAnyByte = true;
-            if (currentByte == '\n') {
-                break;
-            }
-            if (currentByte != '\r') {
-                buffer.write(currentByte);
-            }
-        }
-
-        if (!readAnyByte && buffer.size() == 0) {
-            return null;
-        }
-
-        return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-    }
-
-    private Map<String, String> parseQueryString(String query) throws BadRequestException {
-        if (query == null || query.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<String, String> params = new HashMap<>();
-        String[] pairs = query.split("&");
-
-        for (String pair : pairs) {
-            if (pair.isEmpty()) {
-                continue;
-            }
-
-            String rawKey;
-            String rawValue;
-            int separatorIndex = pair.indexOf('=');
-            if (separatorIndex < 0) {
-                rawKey = pair;
-                rawValue = "";
-            } else {
-                rawKey = pair.substring(0, separatorIndex);
-                rawValue = pair.substring(separatorIndex + 1);
-            }
-
-            try {
-                String key = URLDecoder.decode(rawKey, StandardCharsets.UTF_8);
-                if (key.isEmpty()) {
-                    continue;
-                }
-
-                String value = URLDecoder.decode(rawValue, StandardCharsets.UTF_8);
-                params.put(key, value);
-            } catch (IllegalArgumentException exception) {
-                throw new BadRequestException("Invalid query string.");
-            }
-        }
-
-        if (params.isEmpty()) {
-            return Map.of();
-        }
-        return Map.copyOf(params);
     }
 
     private void sendErrorResponse(java.net.InetAddress address, int port, int statusCode, String message) {
@@ -369,25 +215,5 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
             case 500 -> "Internal Server Error";
             default -> "Status";
         };
-    }
-
-    private static final class ParsedUdpRequest {
-        private final String method;
-        private final String path;
-        private final Map<String, String> queryParams;
-        private final String body;
-
-        private ParsedUdpRequest(String method, String path, Map<String, String> queryParams, String body) {
-            this.method = method;
-            this.path = path;
-            this.queryParams = queryParams;
-            this.body = body;
-        }
-    }
-
-    private static final class BadRequestException extends Exception {
-        private BadRequestException(String message) {
-            super(message);
-        }
     }
 }
