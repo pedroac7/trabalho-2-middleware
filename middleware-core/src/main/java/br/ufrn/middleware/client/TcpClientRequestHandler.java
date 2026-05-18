@@ -43,6 +43,7 @@ public class TcpClientRequestHandler implements ClientRequestHandler {
         }
 
         TextInvocationMessage message = new TextInvocationMessage(
+                request.getRequestId(),
                 request.getHttpMethod(),
                 buildPath(reference, request.getRemotePath()),
                 request.getQueryParams(),

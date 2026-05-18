@@ -98,6 +98,7 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
     private byte[] buildPayload(RemoteInvocationRequest request) {
         AbsoluteObjectReference reference = request.getObjectReference();
         TextInvocationMessage message = new TextInvocationMessage(
+                request.getRequestId(),
                 request.getHttpMethod(),
                 buildPath(reference, request.getRemotePath()),
                 request.getQueryParams(),

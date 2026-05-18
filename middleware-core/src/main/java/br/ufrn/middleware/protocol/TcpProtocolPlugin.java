@@ -126,6 +126,7 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
                 byte[] requestBytes = readRequestBytes(inputStream);
                 TextInvocationMessage message = invocationRequestMarshaller.unmarshal(requestBytes);
                 InvocationRequest invocationRequest = new InvocationRequest(
+                        message.getRequestId(),
                         message.getMethod(),
                         message.getPath(),
                         message.getQueryParams(),

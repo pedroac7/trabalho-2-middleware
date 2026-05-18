@@ -52,7 +52,12 @@ public class Broker {
             throw new IllegalArgumentException("InvocationRequest must not be null.");
         }
 
-        InvocationContext context = new InvocationContext("http", request.getHttpMethod(), request.getPath());
+        InvocationContext context = new InvocationContext(
+                request.getRequestId(),
+                "unknown",
+                request.getHttpMethod(),
+                request.getPath()
+        );
         List<InvocationInterceptor> currentInterceptors = List.copyOf(interceptors);
 
         try {

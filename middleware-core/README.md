@@ -77,3 +77,11 @@ UDP usa datagramas, então não há conexão persistente.
 - `InvocationRequestMarshaller` serializa e desserializa mensagens de invocação TCP/UDP.
 - HTTP mantém parsing próprio de requisição por causa do formato HTTP, mas converte tudo para `InvocationRequest`.
 - Todos os protocolos convergem para `InvocationRequest` e `InvocationResponse`.
+
+## Invocation Context
+
+- Cada requisição remota possui um `requestId`.
+- O `Requestor` cria `requestId` automaticamente quando não é informado.
+- HTTP transporta `requestId` no header `X-Request-Id`.
+- TCP e UDP transportam `requestId` no campo `REQUEST_ID` do payload textual.
+- Interceptors usam o mesmo `requestId` para logs e correlação ponta a ponta.

@@ -15,6 +15,7 @@ class SimpleTextInvocationRequestMarshallerTest {
     @Test
     void marshalGetWithoutBody() {
         TextInvocationMessage message = new TextInvocationMessage(
+                "req-123",
                 "GET",
                 "/calculadora/soma",
                 Map.of("a", "10", "b", "20"),
@@ -24,6 +25,7 @@ class SimpleTextInvocationRequestMarshallerTest {
         byte[] bytes = marshaller.marshal(message);
         String serialized = new String(bytes, StandardCharsets.UTF_8);
 
+        assertTrue(serialized.contains("REQUEST_ID req-123"));
         assertTrue(serialized.contains("METHOD GET"));
         assertTrue(serialized.contains("PATH /calculadora/soma"));
         assertTrue(serialized.contains("QUERY"));
@@ -34,7 +36,8 @@ class SimpleTextInvocationRequestMarshallerTest {
 
     @Test
     void unmarshalGetWithoutBody() {
-        String raw = "METHOD GET\n"
+        String raw = "REQUEST_ID req-abc\n"
+                + "METHOD GET\n"
                 + "PATH /calculadora/soma\n"
                 + "QUERY a=10&b=20\n"
                 + "BODY_LENGTH 0\n"
@@ -42,6 +45,7 @@ class SimpleTextInvocationRequestMarshallerTest {
 
         TextInvocationMessage message = marshaller.unmarshal(raw.getBytes(StandardCharsets.UTF_8));
 
+        assertEquals("req-abc", message.getRequestId());
         assertEquals("GET", message.getMethod());
         assertEquals("/calculadora/soma", message.getPath());
         assertEquals("10", message.getQueryParams().get("a"));
@@ -51,7 +55,7 @@ class SimpleTextInvocationRequestMarshallerTest {
 
     @Test
     void marshalPostWithBodyUsesUtf8ByteLength() {
-        String body = "conteúdo";
+        String body = "conte\u00FAdo";
         TextInvocationMessage message = new TextInvocationMessage(
                 "POST",
                 "/calculadora/body",
@@ -69,7 +73,8 @@ class SimpleTextInvocationRequestMarshallerTest {
     @Test
     void unmarshalPostWithBody() {
         String body = "conteudo";
-        String raw = "METHOD POST\n"
+        String raw = "REQUEST_ID req-post\n"
+                + "METHOD POST\n"
                 + "PATH /calculadora/body\n"
                 + "QUERY\n"
                 + "BODY_LENGTH " + body.getBytes(StandardCharsets.UTF_8).length + "\n"
@@ -78,6 +83,7 @@ class SimpleTextInvocationRequestMarshallerTest {
 
         TextInvocationMessage message = marshaller.unmarshal(raw.getBytes(StandardCharsets.UTF_8));
 
+        assertEquals("req-post", message.getRequestId());
         assertEquals("POST", message.getMethod());
         assertEquals("/calculadora/body", message.getPath());
         assertEquals(body, message.getBody());
@@ -85,7 +91,8 @@ class SimpleTextInvocationRequestMarshallerTest {
 
     @Test
     void unmarshalRejectsMissingMethod() {
-        String raw = "PATH /calculadora/soma\n"
+        String raw = "REQUEST_ID req-1\n"
+                + "PATH /calculadora/soma\n"
                 + "QUERY a=10&b=20\n"
                 + "BODY_LENGTH 0\n"
                 + "\n";
@@ -95,7 +102,8 @@ class SimpleTextInvocationRequestMarshallerTest {
 
     @Test
     void unmarshalRejectsInvalidBodyLength() {
-        String raw = "METHOD GET\n"
+        String raw = "REQUEST_ID req-2\n"
+                + "METHOD GET\n"
                 + "PATH /calculadora/soma\n"
                 + "QUERY a=10&b=20\n"
                 + "BODY_LENGTH abc\n"
@@ -106,7 +114,8 @@ class SimpleTextInvocationRequestMarshallerTest {
 
     @Test
     void unmarshalRejectsTruncatedBody() {
-        String raw = "METHOD POST\n"
+        String raw = "REQUEST_ID req-3\n"
+                + "METHOD POST\n"
                 + "PATH /calculadora/body\n"
                 + "QUERY\n"
                 + "BODY_LENGTH 10\n"
@@ -119,15 +128,44 @@ class SimpleTextInvocationRequestMarshallerTest {
     @Test
     void queryEncodingRoundTrip() {
         TextInvocationMessage source = new TextInvocationMessage(
+                "req-query",
                 "GET",
                 "/calculadora/eco",
-                Map.of("valor", "ação teste"),
+                Map.of("valor", "a\u00E7\u00E3o teste"),
                 ""
         );
 
         byte[] bytes = marshaller.marshal(source);
         TextInvocationMessage decoded = marshaller.unmarshal(bytes);
 
-        assertEquals("ação teste", decoded.getQueryParams().get("valor"));
+        assertEquals("a\u00E7\u00E3o teste", decoded.getQueryParams().get("valor"));
+    }
+
+    @Test
+    void requestIdRoundTrip() {
+        TextInvocationMessage source = new TextInvocationMessage(
+                "req-456",
+                "GET",
+                "/calculadora/soma",
+                Map.of("a", "10"),
+                ""
+        );
+
+        byte[] bytes = marshaller.marshal(source);
+        TextInvocationMessage decoded = marshaller.unmarshal(bytes);
+
+        assertEquals("req-456", decoded.getRequestId());
+    }
+
+    @Test
+    void unmarshalWithoutRequestIdGeneratesOne() {
+        String raw = "METHOD GET\n"
+                + "PATH /calculadora/soma\n"
+                + "QUERY a=10\n"
+                + "BODY_LENGTH 0\n"
+                + "\n";
+
+        TextInvocationMessage message = marshaller.unmarshal(raw.getBytes(StandardCharsets.UTF_8));
+        assertTrue(message.getRequestId() != null && !message.getRequestId().isBlank());
     }
 }

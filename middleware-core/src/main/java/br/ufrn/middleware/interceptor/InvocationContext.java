@@ -16,7 +16,11 @@ public class InvocationContext {
     private Throwable error;
 
     public InvocationContext(String protocol, String httpMethod, String path) {
-        this.requestId = UUID.randomUUID().toString();
+        this(null, protocol, httpMethod, path);
+    }
+
+    public InvocationContext(String requestId, String protocol, String httpMethod, String path) {
+        this.requestId = normalizeRequestId(requestId);
         this.protocol = protocol == null ? "unknown" : protocol;
         this.httpMethod = httpMethod == null ? "UNKNOWN" : httpMethod;
         this.path = path == null ? "/" : path;
@@ -89,5 +93,12 @@ public class InvocationContext {
     public void markFinished(int statusCode) {
         this.statusCode = statusCode;
         this.finishedAt = Instant.now();
+    }
+
+    private String normalizeRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return requestId.trim();
     }
 }

@@ -121,6 +121,7 @@ public class HttpProtocolPlugin implements ProtocolPlugin {
             try {
                 ParsedHttpRequest parsedRequest = parseRequest(inputStream);
                 InvocationRequest request = new InvocationRequest(
+                        parsedRequest.requestId,
                         parsedRequest.httpMethod,
                         parsedRequest.path,
                         parsedRequest.queryParams,
@@ -164,6 +165,7 @@ public class HttpProtocolPlugin implements ProtocolPlugin {
         }
 
         Map<String, String> headers = readHeaders(inputStream);
+        String requestId = headers.get("x-request-id");
         int contentLength = parseContentLength(headers.get("content-length"));
         String body = contentLength > 0
                 ? new String(readExactBytes(inputStream, contentLength), StandardCharsets.UTF_8)
@@ -177,7 +179,7 @@ public class HttpProtocolPlugin implements ProtocolPlugin {
             query = queryStartIndex + 1 < target.length() ? target.substring(queryStartIndex + 1) : "";
         }
 
-        return new ParsedHttpRequest(method, path, parseQueryString(query), body);
+        return new ParsedHttpRequest(requestId, method, path, parseQueryString(query), body);
     }
 
     private Map<String, String> readHeaders(InputStream inputStream) throws IOException, BadRequestException {
@@ -343,12 +345,20 @@ public class HttpProtocolPlugin implements ProtocolPlugin {
     }
 
     private static final class ParsedHttpRequest {
+        private final String requestId;
         private final String httpMethod;
         private final String path;
         private final Map<String, String> queryParams;
         private final String body;
 
-        private ParsedHttpRequest(String httpMethod, String path, Map<String, String> queryParams, String body) {
+        private ParsedHttpRequest(
+                String requestId,
+                String httpMethod,
+                String path,
+                Map<String, String> queryParams,
+                String body
+        ) {
+            this.requestId = requestId;
             this.httpMethod = httpMethod;
             this.path = path;
             this.queryParams = queryParams;

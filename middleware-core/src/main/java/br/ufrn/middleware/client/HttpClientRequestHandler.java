@@ -50,7 +50,8 @@ public class HttpClientRequestHandler implements ClientRequestHandler {
 
     private HttpRequest buildHttpRequest(RemoteInvocationRequest request, URI uri) {
         String method = request.getHttpMethod();
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .header("X-Request-Id", request.getRequestId());
 
         if ("GET".equals(method)) {
             return builder.GET().build();

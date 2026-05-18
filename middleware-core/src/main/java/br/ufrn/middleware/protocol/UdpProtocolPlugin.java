@@ -137,6 +137,7 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
         try {
             TextInvocationMessage message = invocationRequestMarshaller.unmarshal(packetData);
             InvocationRequest invocationRequest = new InvocationRequest(
+                    message.getRequestId(),
                     message.getMethod(),
                     message.getPath(),
                     message.getQueryParams(),

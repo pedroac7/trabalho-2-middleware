@@ -19,6 +19,7 @@ public class SimpleTextInvocationRequestMarshaller implements InvocationRequestM
             byte[] bodyBytes = message.getBody().getBytes(StandardCharsets.UTF_8);
 
             StringBuilder builder = new StringBuilder();
+            builder.append("REQUEST_ID ").append(message.getRequestId()).append('\n');
             builder.append("METHOD ").append(message.getMethod()).append('\n');
             builder.append("PATH ").append(message.getPath()).append('\n');
             builder.append("QUERY");
@@ -91,6 +92,7 @@ public class SimpleTextInvocationRequestMarshaller implements InvocationRequestM
             String method = fields.get("METHOD");
             String path = fields.get("PATH");
             String bodyLengthRaw = fields.get("BODY_LENGTH");
+            String requestId = fields.get("REQUEST_ID");
             String query = fields.getOrDefault("QUERY", "");
 
             if (method == null || method.isBlank()) {
@@ -111,7 +113,7 @@ public class SimpleTextInvocationRequestMarshaller implements InvocationRequestM
 
             String body = new String(bytes, index, bodyLength, StandardCharsets.UTF_8);
             Map<String, String> queryParams = parseQueryString(query);
-            return new TextInvocationMessage(method, path, queryParams, body);
+            return new TextInvocationMessage(requestId, method, path, queryParams, body);
         } catch (MarshallingException exception) {
             throw exception;
         } catch (RuntimeException exception) {

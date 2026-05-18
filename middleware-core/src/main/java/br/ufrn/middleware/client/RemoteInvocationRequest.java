@@ -3,8 +3,10 @@ package br.ufrn.middleware.client;
 import br.ufrn.middleware.identification.AbsoluteObjectReference;
 
 import java.util.Map;
+import java.util.UUID;
 
 public final class RemoteInvocationRequest {
+    private final String requestId;
     private final AbsoluteObjectReference objectReference;
     private final String httpMethod;
     private final String remotePath;
@@ -12,6 +14,17 @@ public final class RemoteInvocationRequest {
     private final String body;
 
     public RemoteInvocationRequest(
+            AbsoluteObjectReference objectReference,
+            String httpMethod,
+            String remotePath,
+            Map<String, String> queryParams,
+            String body
+    ) {
+        this(null, objectReference, httpMethod, remotePath, queryParams, body);
+    }
+
+    public RemoteInvocationRequest(
+            String requestId,
             AbsoluteObjectReference objectReference,
             String httpMethod,
             String remotePath,
@@ -28,11 +41,16 @@ public final class RemoteInvocationRequest {
             throw new IllegalArgumentException("Remote path must not be null or blank.");
         }
 
+        this.requestId = normalizeRequestId(requestId);
         this.objectReference = objectReference;
         this.httpMethod = httpMethod.trim().toUpperCase();
         this.remotePath = normalizeRemotePath(remotePath);
         this.queryParams = queryParams == null ? Map.of() : Map.copyOf(queryParams);
         this.body = body;
+    }
+
+    public String getRequestId() {
+        return requestId;
     }
 
     public AbsoluteObjectReference getObjectReference() {
@@ -61,5 +79,12 @@ public final class RemoteInvocationRequest {
             normalized = "/" + normalized;
         }
         return normalized;
+    }
+
+    private static String normalizeRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return requestId.trim();
     }
 }
