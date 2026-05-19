@@ -1,11 +1,13 @@
 package br.ufrn.middleware.core;
 
 import br.ufrn.middleware.binding.ParameterBinder;
+import br.ufrn.middleware.binding.SimpleTypeConverter;
 import br.ufrn.middleware.client.Requestor;
 import br.ufrn.middleware.identification.Lookup;
 import br.ufrn.middleware.interceptor.InvocationInterceptor;
 import br.ufrn.middleware.invoker.Invoker;
 import br.ufrn.middleware.marshaller.InvocationRequestMarshaller;
+import br.ufrn.middleware.marshaller.JsonBodyMarshaller;
 import br.ufrn.middleware.marshaller.ResponseMarshaller;
 import br.ufrn.middleware.marshaller.SimpleJsonResponseMarshaller;
 import br.ufrn.middleware.marshaller.SimpleTextInvocationRequestMarshaller;
@@ -18,6 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class Middleware {
     private final RemoteObjectRegistry registry;
     private final Invoker invoker;
+    private final JsonBodyMarshaller jsonBodyMarshaller;
     private final ParameterBinder parameterBinder;
     private final Broker broker;
     private final InvocationRequestMarshaller invocationRequestMarshaller;
@@ -29,7 +32,8 @@ public class Middleware {
     public Middleware() {
         this.registry = new RemoteObjectRegistry();
         this.invoker = new Invoker();
-        this.parameterBinder = new ParameterBinder();
+        this.jsonBodyMarshaller = new JsonBodyMarshaller();
+        this.parameterBinder = new ParameterBinder(new SimpleTypeConverter(), jsonBodyMarshaller);
         this.interceptors = new CopyOnWriteArrayList<>();
         this.broker = new Broker(registry, parameterBinder, invoker, interceptors);
         this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
@@ -58,6 +62,10 @@ public class Middleware {
 
     public ParameterBinder getParameterBinder() {
         return parameterBinder;
+    }
+
+    public JsonBodyMarshaller getJsonBodyMarshaller() {
+        return jsonBodyMarshaller;
     }
 
     public Broker getBroker() {

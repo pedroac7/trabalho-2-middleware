@@ -1,8 +1,23 @@
 package br.ufrn.middleware.marshaller;
 
 import br.ufrn.middleware.core.InvocationResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class SimpleJsonResponseMarshaller implements ResponseMarshaller {
+    private final ObjectMapper objectMapper;
+
+    public SimpleJsonResponseMarshaller() {
+        this(new ObjectMapper());
+    }
+
+    public SimpleJsonResponseMarshaller(ObjectMapper objectMapper) {
+        if (objectMapper == null) {
+            throw new IllegalArgumentException("ObjectMapper must not be null.");
+        }
+        this.objectMapper = objectMapper;
+    }
+
     @Override
     public String marshal(InvocationResponse response) {
         if (response == null) {
@@ -41,7 +56,11 @@ public class SimpleJsonResponseMarshaller implements ResponseMarshaller {
             return quote(escape(body.toString()));
         }
 
-        return quote(escape(body.toString()));
+        try {
+            return objectMapper.writeValueAsString(body);
+        } catch (JsonProcessingException exception) {
+            throw new MarshallingException("Failed to serialize response object body.", exception);
+        }
     }
 
     private String serializeAsStringOrNull(String value) {

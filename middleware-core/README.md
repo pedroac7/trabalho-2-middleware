@@ -85,3 +85,25 @@ UDP usa datagramas, então não há conexão persistente.
 - HTTP transporta `requestId` no header `X-Request-Id`.
 - TCP e UDP transportam `requestId` no campo `REQUEST_ID` do payload textual.
 - Interceptors usam o mesmo `requestId` para logs e correlação ponta a ponta.
+
+## Body JSON com DTO
+
+- `@Param` continua lendo valores da query string.
+- `@Body String` recebe o corpo bruto da requisição.
+- `@Body MeuDto` converte JSON para DTO automaticamente com Jackson dentro do middleware.
+- A aplicação não precisa fazer parse JSON manualmente.
+
+Exemplo:
+
+```java
+@RemoteMethod(method = "POST", path = "/criar")
+public Resultado criar(@Body ProdutoDto produto) {
+    ...
+}
+```
+
+JSON enviado:
+
+```json
+{"id":1,"nome":"Café"}
+```

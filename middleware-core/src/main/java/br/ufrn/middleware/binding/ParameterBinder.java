@@ -3,6 +3,7 @@ package br.ufrn.middleware.binding;
 import br.ufrn.middleware.annotations.Body;
 import br.ufrn.middleware.annotations.Param;
 import br.ufrn.middleware.error.BindingException;
+import br.ufrn.middleware.marshaller.JsonBodyMarshaller;
 import br.ufrn.middleware.registry.RemoteMethodDescriptor;
 
 import java.lang.reflect.Method;
@@ -12,16 +13,25 @@ import java.util.Map;
 
 public class ParameterBinder {
     private final SimpleTypeConverter converter;
+    private final JsonBodyMarshaller jsonBodyMarshaller;
 
     public ParameterBinder() {
-        this(new SimpleTypeConverter());
+        this(new SimpleTypeConverter(), new JsonBodyMarshaller());
     }
 
     public ParameterBinder(SimpleTypeConverter converter) {
+        this(converter, new JsonBodyMarshaller());
+    }
+
+    public ParameterBinder(SimpleTypeConverter converter, JsonBodyMarshaller jsonBodyMarshaller) {
         if (converter == null) {
             throw new IllegalArgumentException("SimpleTypeConverter must not be null.");
         }
+        if (jsonBodyMarshaller == null) {
+            throw new IllegalArgumentException("JsonBodyMarshaller must not be null.");
+        }
         this.converter = converter;
+        this.jsonBodyMarshaller = jsonBodyMarshaller;
     }
 
     public Object[] bind(RemoteMethodDescriptor descriptor, Map<String, String> queryParams, String body) {
@@ -34,6 +44,7 @@ public class ParameterBinder {
         Method method = descriptor.getJavaMethod();
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
+        int bodyParameterCount = 0;
 
         for (int i = 0; i < parameters.length; i++) {
             Parameter parameter = parameters[i];
@@ -72,12 +83,16 @@ public class ParameterBinder {
             }
 
             if (bodyAnnotation != null) {
-                if (parameter.getType() != String.class) {
+                bodyParameterCount++;
+                if (bodyParameterCount > 1) {
                     throw new BindingException(
-                            "Body binding for type "
-                                    + parameter.getType().getName()
-                                    + " is not implemented yet. Only String is supported."
+                            "Method " + method.getName() + " cannot have more than one @Body parameter."
                     );
+                }
+
+                if (parameter.getType() != String.class) {
+                    args[i] = jsonBodyMarshaller.unmarshalBody(body, parameter.getType());
+                    continue;
                 }
                 args[i] = body;
                 continue;
