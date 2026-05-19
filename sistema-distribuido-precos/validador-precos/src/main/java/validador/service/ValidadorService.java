@@ -1,9 +1,18 @@
 package validador.service;
 
+import br.ufrn.middleware.annotations.Body;
+import br.ufrn.middleware.annotations.Lifecycle;
+import br.ufrn.middleware.annotations.RemoteComponent;
+import br.ufrn.middleware.annotations.RemoteMethod;
+import br.ufrn.middleware.lifecycle.LifecycleType;
 import validador.model.*;
 
+@RemoteComponent("validador")
+@Lifecycle(LifecycleType.STATIC_INSTANCE)
 public class ValidadorService {
-    public ValidationResult validar(PrecoPayload preco) {
+
+    @RemoteMethod(method = "POST", path = "/validar")
+    public ValidationResult validar(@Body PrecoPayload preco) {
         if (preco == null) {
             return ValidationResult.invalid("JSON_INVALIDO");
         }
