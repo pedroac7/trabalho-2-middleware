@@ -10,7 +10,6 @@ public final class RepositorioClientFactory {
 
     public static RepositorioClient create(String protocolo, int timeoutMs) {
         return switch (protocolo.toLowerCase()) {
-            case "grpc" -> new GrpcRepositorioClient(timeoutMs);
             case "udp" -> new UdpRepositorioClient(timeoutMs);
             case "tcp" -> new TcpRepositorioClient(timeoutMs);
             case "http" -> new HttpRepositorioClient(timeoutMs);

@@ -10,7 +10,6 @@ public final class GatewayServerFactory {
 
     public static ProtocolServer create(String protocolo, int businessPort, GatewayService gatewayService) {
         return switch (protocolo.toLowerCase()) {
-            case "grpc" -> new GrpcGatewayServer(businessPort, gatewayService);
             case "udp" -> new UdpGatewayServer(businessPort, gatewayService);
             case "tcp" -> new TcpGatewayServer(businessPort, gatewayService);
             case "http" -> new HttpGatewayServer(businessPort, gatewayService);

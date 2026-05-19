@@ -2,11 +2,6 @@ package heartbeat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.grpc.Server;
-import io.grpc.ServerBuilder;
-import io.grpc.stub.StreamObserver;
-import precos.Comunicacao;
-import precos.HeartbeatGatewayGrpc;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -48,9 +43,6 @@ public class HeartbeatReceiver {
                 break;
             case "http":
                 new Thread(this::listenHttp).start();
-                break;
-            case "grpc":
-                new Thread(this::listenGrpc).start();
                 break;
             default:
                 System.out.println("Protocolo de heartbeat nao suportado: " + protocolo);
@@ -107,21 +99,6 @@ public class HeartbeatReceiver {
         }
     }
 
-    private void listenGrpc() {
-        try {
-            Server server = ServerBuilder.forPort(listenPort)
-                    .addService(new HeartbeatGrpcService())
-                    .build()
-                    .start();
-
-            System.out.println("[Gateway] Servidor gRPC de heartbeat iniciado na porta " + listenPort);
-            Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "gateway-heartbeat-grpc-shutdown"));
-            server.awaitTermination();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
     private void processHeartbeat(String msg) {
         if (msg.startsWith("HEARTBEAT:")) {
             String[] parts = msg.split(":");
@@ -148,10 +125,6 @@ public class HeartbeatReceiver {
         } catch (Exception e) {
             System.out.println("[Gateway] Heartbeat HTTP invalido: " + e.getMessage());
         }
-    }
-
-    private void processHeartbeatGrpc(Comunicacao.HeartbeatRequest request) {
-        registerHeartbeat(request.getHost(), Integer.toString(request.getPort()), request.getTipo(), "Heartbeat gRPC");
     }
 
     private void registerHeartbeat(String host, String port, String tipoRaw, String canal) {
@@ -257,20 +230,6 @@ public class HeartbeatReceiver {
         }
 
         return new HttpHeartbeatRequest(requestLine, new String(bodyBytes, StandardCharsets.UTF_8));
-    }
-
-    private class HeartbeatGrpcService extends HeartbeatGatewayGrpc.HeartbeatGatewayImplBase {
-        @Override
-        public void registrarHeartbeat(Comunicacao.HeartbeatRequest request,
-                                       StreamObserver<Comunicacao.HeartbeatResponse> responseObserver) {
-            processHeartbeatGrpc(request);
-            Comunicacao.HeartbeatResponse response = Comunicacao.HeartbeatResponse.newBuilder()
-                    .setOk(true)
-                    .setMensagem("REGISTRADO")
-                    .build();
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-        }
     }
 
     private record HttpHeartbeatRequest(String requestLine, String body) {
