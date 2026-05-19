@@ -1,13 +1,21 @@
 package repositorio.service;
 
+import br.ufrn.middleware.annotations.Body;
+import br.ufrn.middleware.annotations.Lifecycle;
+import br.ufrn.middleware.annotations.RemoteComponent;
+import br.ufrn.middleware.annotations.RemoteMethod;
+import br.ufrn.middleware.lifecycle.LifecycleType;
 import repositorio.model.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 
+@RemoteComponent("repositorio")
+@Lifecycle(LifecycleType.STATIC_INSTANCE)
 public class RepositorioService {
     private final ConcurrentHashMap<String, PrecoArmazenado> precos = new ConcurrentHashMap<>();
 
-    public StorageResult armazenar(PrecoPayload preco) {
+    @RemoteMethod(method = "POST", path = "/armazenar")
+    public StorageResult armazenar(@Body PrecoPayload preco) {
         if (preco == null) {
             return StorageResult.error("JSON_INVALIDO");
         }

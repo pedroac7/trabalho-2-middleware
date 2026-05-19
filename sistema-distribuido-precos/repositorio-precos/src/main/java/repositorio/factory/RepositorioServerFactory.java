@@ -9,7 +9,6 @@ public final class RepositorioServerFactory {
 
     public static ProtocolServer create(String protocolo, int businessPort, RepositorioService repositorioService) {
         return switch (protocolo.toLowerCase()) {
-            case "grpc" -> new GrpcRepositorioServer(businessPort, repositorioService);
             case "udp" -> new UdpRepositorioServer(businessPort, repositorioService);
             case "tcp" -> new TcpRepositorioServer(businessPort, repositorioService);
             case "http" -> new HttpRepositorioServer(businessPort, repositorioService);

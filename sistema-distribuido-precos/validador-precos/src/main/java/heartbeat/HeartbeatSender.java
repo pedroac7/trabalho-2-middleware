@@ -1,11 +1,5 @@
 package heartbeat;
 
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.StatusRuntimeException;
-import precos.Comunicacao;
-import precos.HeartbeatGatewayGrpc;
-
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.DatagramPacket;
@@ -13,7 +7,6 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeUnit;
 
 public class HeartbeatSender implements Runnable {
     private final String gatewayHost;
@@ -47,9 +40,6 @@ public class HeartbeatSender implements Runnable {
                     break;
                 case "http":
                     sendHttpHeartbeat();
-                    break;
-                case "grpc":
-                    sendGrpcHeartbeat();
                     break;
                 default:
                     System.out.println("Protocolo de heartbeat nao suportado: " + protocolo);
@@ -104,30 +94,4 @@ public class HeartbeatSender implements Runnable {
         }
     }
 
-    private void sendGrpcHeartbeat() throws Exception {
-        ManagedChannel channel = ManagedChannelBuilder.forAddress(gatewayHost, gatewayPort)
-                .usePlaintext()
-                .build();
-
-        try {
-            HeartbeatGatewayGrpc.HeartbeatGatewayBlockingStub stub = HeartbeatGatewayGrpc.newBlockingStub(channel);
-
-            while (running) {
-                try {
-                    stub.withDeadlineAfter(1000, TimeUnit.MILLISECONDS).registrarHeartbeat(
-                            Comunicacao.HeartbeatRequest.newBuilder()
-                                    .setHost(InetAddress.getLocalHost().getHostAddress())
-                                    .setPort(servicePort)
-                                    .setTipo(tipoEntidade)
-                                    .build()
-                    );
-                } catch (StatusRuntimeException e) {
-                    // Ignora falhas de conexao
-                }
-                Thread.sleep(1000);
-            }
-        } finally {
-            channel.shutdownNow();
-        }
-    }
 }
