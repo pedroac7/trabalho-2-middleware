@@ -1,140 +1,118 @@
-Pre-requisito em cada modulo:
+============================================================
+0) PREPARAÇÃO GERAL
+============================================================
+
+Execute uma vez antes dos testes, a partir da raiz do repositório:
+
+cd middleware-core
+mvn install -DskipTests
+
+cd ..\sistema-distribuido-precos\api-gateway
 mvn -q -DskipTests package
 mvn -q dependency:copy-dependencies
 
-==================================================
-HTTP
-==================================================
+Depois volte para a raiz se quiser seguir os comandos abaixo:
 
-Gateway:
-cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main http 8080 9090 100 http
+cd ..\..
 
-Validador 1:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main http 8081 127.0.0.1 9090
+============================================================
+1) FLUXO HTTP
+============================================================
 
-Validador 2:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main http 8084 127.0.0.1 9090
+TERMINAL 1 - VALIDADOR 1 HTTP
 
-Repositorio 1:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main http 8082 127.0.0.1 9090
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=http 8081 localhost 9090"
 
-Repositorio 2:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main http 8083 127.0.0.1 9090
 
-Teste HTTP:
-curl -X POST "http://localhost:8080/gateway/precos" ^
-  -H "Content-Type: application/json" ^
-  --data-raw "{\"ativo\":\"PETR4\",\"valor\":35.50,\"timestamp\":1710000000000}"
+TERMINAL 2 - VALIDADOR 2 HTTP
 
-==================================================
-TCP
-==================================================
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=http 8084 localhost 9090"
 
-Gateway:
-cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main tcp 8080 9090 100 tcp
 
-Validador 1:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main tcp 8081 127.0.0.1 9090
+TERMINAL 3 - REPOSITORIO 1 HTTP
 
-Validador 2:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main tcp 8084 127.0.0.1 9090
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=http 8082 localhost 9090"
 
-Repositorio 1:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main tcp 8082 127.0.0.1 9090
 
-Repositorio 2:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main tcp 8083 127.0.0.1 9090
+TERMINAL 4 - REPOSITORIO 2 HTTP
 
-Teste TCP:
-{
-  printf 'REQUEST_ID req-tcp-cli-1\n'
-  printf 'METHOD POST\n'
-  printf 'PATH /gateway/precos\n'
-  printf 'QUERY\n'
-  printf 'BODY_LENGTH 57\n'
-  printf '\n'
-  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
-} | nc -N localhost 8080
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=http 8083 localhost 9090"
 
-==================================================
-UDP
-==================================================
 
-Gateway:
-cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main udp 8080 9090 100 udp
+TERMINAL 5 - GATEWAY HTTP
 
-Validador 1:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main udp 8081 127.0.0.1 9090
+cd sistema-distribuido-precos\api-gateway
+java -cp "target/classes;target/dependency/*" gateway.Main http 8080 9090 50 http
 
-Validador 2:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main udp 8084 127.0.0.1 9090
 
-Repositorio 1:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main udp 8082 127.0.0.1 9090
+============================================================
+2) FLUXO TCP
+============================================================
 
-Repositorio 2:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main udp 8083 127.0.0.1 9090
+TERMINAL 1 - VALIDADOR 1 TCP
 
-Teste UDP:
-{
-  printf 'REQUEST_ID req-udp-cli-1\n'
-  printf 'METHOD POST\n'
-  printf 'PATH /gateway/precos\n'
-  printf 'QUERY\n'
-  printf 'BODY_LENGTH 57\n'
-  printf '\n'
-  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
-} | nc -u -w 2 localhost 8080
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=tcp 8081 localhost 9090"
 
-==================================================
-SIGNIFICADO DOS PARAMETROS
-==================================================
 
-Gateway:
-gateway.Main <gatewayProtocol> <gatewayPort> <heartbeatPort> <epsilonMs> <internalClientsProtocol>
+TERMINAL 2 - VALIDADOR 2 TCP
 
-Exemplo:
-gateway.Main http 8080 9090 100 http
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=tcp 8084 localhost 9090"
 
-- gatewayProtocol = protocolo de negocio exposto pelo gateway: http, tcp ou udp
-- gatewayPort = porta de negocio do gateway
-- heartbeatPort = porta do HeartbeatReceiver
-- epsilonMs = epsilon do Clock-Bound Wait
-- internalClientsProtocol = protocolo esperado para clients internos; na pratica o GatewayService usa o protocolo anunciado por heartbeat
 
-Validador / Repositorio:
-validador.Main <serviceProtocol> <servicePort> <gatewayHost> <gatewayHeartbeatPort>
-repositorio.Main <serviceProtocol> <servicePort> <gatewayHost> <gatewayHeartbeatPort>
+TERMINAL 3 - REPOSITORIO 1 TCP
 
-Exemplo:
-validador.Main tcp 8081 127.0.0.1 9090
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=tcp 8082 localhost 9090"
 
-- serviceProtocol = protocolo de negocio anunciado no heartbeat: http, tcp ou udp
-- servicePort = porta de negocio da instancia
-- gatewayHost = host do gateway
-- gatewayHeartbeatPort = porta do HeartbeatReceiver do gateway
 
-==================================================
-ORDEM RECOMENDADA
-==================================================
+TERMINAL 4 - REPOSITORIO 2 TCP
 
-1. Gateway
-2. Validadores
-3. Repositorios
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=tcp 8083 localhost 9090"
 
-Depois espere alguns segundos para os heartbeats estabilizarem antes de testar.
+
+TERMINAL 5 - GATEWAY TCP
+
+cd sistema-distribuido-precos\api-gateway
+java -cp "target/classes;target/dependency/*" gateway.Main tcp 8080 9090 50 tcp
+
+
+============================================================
+3) FLUXO UDP
+============================================================
+
+TERMINAL 1 - VALIDADOR 1 UDP
+
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=udp 8081 localhost 9090"
+
+
+TERMINAL 2 - VALIDADOR 2 UDP
+
+cd sistema-distribuido-precos\validador-precos
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=udp 8084 localhost 9090"
+
+
+TERMINAL 3 - REPOSITORIO 1 UDP
+
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=udp 8082 localhost 9090"
+
+
+TERMINAL 4 - REPOSITORIO 2 UDP
+
+cd sistema-distribuido-precos\repositorio-precos
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=udp 8083 localhost 9090"
+
+
+TERMINAL 5 - GATEWAY UDP
+
+cd sistema-distribuido-precos\api-gateway
+java -cp "target/classes;target/dependency/*" gateway.Main udp 8080 9090 50 udp
+

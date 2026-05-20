@@ -286,6 +286,7 @@ Status: execucao JMeter ainda pendente nesta revisao.
 0. Controle de saturacao server-side no gateway
 - O `api-gateway` usa configuracao fixa no plugin de protocolo: `300` workers e fila de `1000`.
 - O `validador-precos` usa limite controlado: `40` workers e fila de `80`.
+- O `ValidadorService` possui atraso controlado de `50ms` para simular custo de processamento de validacao durante os testes de carga, permitindo observar a queda de capacidade quando uma instancia do validador e derrubada.
 - O `repositorio-precos` usa limite maior que validador para nao ser o primeiro gargalo: `100` workers e fila de `300`.
 - Quando a fila satura, o middleware responde imediatamente com `503` e erro `SERVER_BUSY`.
 - Isso evita espera indefinida na entrada do gateway e ajuda a demonstrar efeito de perda de capacidade no validador durante carga (JMeter).

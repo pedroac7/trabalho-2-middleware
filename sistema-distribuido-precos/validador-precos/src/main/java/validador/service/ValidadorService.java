@@ -11,8 +11,12 @@ import validador.model.*;
 @Lifecycle(LifecycleType.STATIC_INSTANCE)
 public class ValidadorService {
 
+    private static final long PROCESSING_DELAY_MILLIS = 50;
+
     @RemoteMethod(method = "POST", path = "/validar")
     public ValidationResult validar(@Body PrecoPayload preco) {
+        simularCustoDeProcessamento();
+
         if (preco == null) {
             return ValidationResult.invalid("JSON_INVALIDO");
         }
@@ -26,5 +30,13 @@ public class ValidadorService {
             return ValidationResult.invalid("TIMESTAMP_INVALIDO");
         }
         return ValidationResult.accepted();
+    }
+
+    private void simularCustoDeProcessamento() {
+        try {
+            Thread.sleep(PROCESSING_DELAY_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
