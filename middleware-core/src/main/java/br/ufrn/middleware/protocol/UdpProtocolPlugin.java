@@ -19,14 +19,21 @@ import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class UdpProtocolPlugin implements ProtocolPlugin {
     private static final int DEFAULT_MAX_PACKET_SIZE = 8192;
+    private static final int DEFAULT_WORKER_THREADS = 20;
+    private static final int DEFAULT_QUEUE_CAPACITY = 1000;
 
     private final int port;
     private final int maxPacketSize;
+    private final int workerThreads;
+    private final int queueCapacity;
     private final InvocationRequestMarshaller invocationRequestMarshaller;
 
     private DatagramSocket socket;
@@ -37,18 +44,34 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
     private ResponseMarshaller responseMarshaller;
 
     public UdpProtocolPlugin(int port) {
-        this(port, DEFAULT_MAX_PACKET_SIZE);
+        this(port, DEFAULT_MAX_PACKET_SIZE, DEFAULT_WORKER_THREADS, DEFAULT_QUEUE_CAPACITY);
     }
 
     public UdpProtocolPlugin(int port, int maxPacketSize) {
+        this(port, maxPacketSize, DEFAULT_WORKER_THREADS, DEFAULT_QUEUE_CAPACITY);
+    }
+
+    public UdpProtocolPlugin(int port, int workerThreads, int queueCapacity) {
+        this(port, DEFAULT_MAX_PACKET_SIZE, workerThreads, queueCapacity);
+    }
+
+    public UdpProtocolPlugin(int port, int maxPacketSize, int workerThreads, int queueCapacity) {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
         if (maxPacketSize <= 0) {
             throw new IllegalArgumentException("maxPacketSize must be greater than zero.");
         }
+        if (workerThreads <= 0) {
+            throw new IllegalArgumentException("workerThreads must be greater than zero.");
+        }
+        if (queueCapacity <= 0) {
+            throw new IllegalArgumentException("queueCapacity must be greater than zero.");
+        }
         this.port = port;
         this.maxPacketSize = maxPacketSize;
+        this.workerThreads = workerThreads;
+        this.queueCapacity = queueCapacity;
         this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
     }
 
@@ -71,7 +94,14 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
 
         try {
             this.socket = new DatagramSocket(port);
-            this.executor = Executors.newFixedThreadPool(20);
+            this.executor = new ThreadPoolExecutor(
+                    workerThreads,
+                    workerThreads,
+                    0L,
+                    TimeUnit.MILLISECONDS,
+                    new ArrayBlockingQueue<>(queueCapacity),
+                    new ThreadPoolExecutor.AbortPolicy()
+            );
             this.broker = broker;
             this.responseMarshaller = responseMarshaller;
             this.running = true;
@@ -117,7 +147,11 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
                 java.net.InetAddress sourceAddress = packet.getAddress();
                 int sourcePort = packet.getPort();
 
-                executor.submit(() -> handlePacket(packetData, sourceAddress, sourcePort));
+                try {
+                    executor.execute(() -> handlePacket(packetData, sourceAddress, sourcePort));
+                } catch (RejectedExecutionException exception) {
+                    sendErrorResponse(sourceAddress, sourcePort, 503, "SERVER_BUSY");
+                }
             } catch (SocketException exception) {
                 if (running) {
                     throw new RemotingException("Socket error in UDP receive loop.", exception);
@@ -128,7 +162,6 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
                     throw new RemotingException("I/O error in UDP receive loop.", exception);
                 }
                 return;
-            } catch (RuntimeException ignored) {
             }
         }
     }
@@ -213,6 +246,7 @@ public class UdpProtocolPlugin implements ProtocolPlugin {
             case 200 -> "OK";
             case 400 -> "Bad Request";
             case 404 -> "Not Found";
+            case 503 -> "Service Unavailable";
             case 500 -> "Internal Server Error";
             default -> "Status";
         };

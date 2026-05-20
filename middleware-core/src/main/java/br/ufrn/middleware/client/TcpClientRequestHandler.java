@@ -10,23 +10,39 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class TcpClientRequestHandler implements ClientRequestHandler {
+    private static final String REQUEST_TIMEOUT_BODY = "{\"success\":false,\"statusCode\":504,\"error\":\"REQUEST_TIMEOUT\"}";
     private static final Pattern STATUS_CODE_PATTERN = Pattern.compile("\"statusCode\"\\s*:\\s*(\\d+)");
     private final InvocationRequestMarshaller invocationRequestMarshaller;
+    private final int timeoutMillis;
 
     public TcpClientRequestHandler() {
-        this(new SimpleTextInvocationRequestMarshaller());
+        this(0, new SimpleTextInvocationRequestMarshaller());
+    }
+
+    public TcpClientRequestHandler(int timeoutMillis) {
+        this(timeoutMillis, new SimpleTextInvocationRequestMarshaller());
     }
 
     public TcpClientRequestHandler(InvocationRequestMarshaller invocationRequestMarshaller) {
+        this(0, invocationRequestMarshaller);
+    }
+
+    public TcpClientRequestHandler(int timeoutMillis, InvocationRequestMarshaller invocationRequestMarshaller) {
+        if (timeoutMillis < 0) {
+            throw new IllegalArgumentException("timeoutMillis must not be negative.");
+        }
         if (invocationRequestMarshaller == null) {
             throw new IllegalArgumentException("InvocationRequestMarshaller must not be null.");
         }
+        this.timeoutMillis = timeoutMillis;
         this.invocationRequestMarshaller = invocationRequestMarshaller;
     }
 
@@ -51,7 +67,15 @@ public class TcpClientRequestHandler implements ClientRequestHandler {
         );
         byte[] requestBytes = invocationRequestMarshaller.marshal(message);
 
-        try (Socket socket = new Socket(reference.getHost(), reference.getPort())) {
+        try (Socket socket = new Socket()) {
+            InetSocketAddress endpoint = new InetSocketAddress(reference.getHost(), reference.getPort());
+            if (timeoutMillis > 0) {
+                socket.connect(endpoint, timeoutMillis);
+                socket.setSoTimeout(timeoutMillis);
+            } else {
+                socket.connect(endpoint);
+            }
+
             OutputStream outputStream = socket.getOutputStream();
             InputStream inputStream = socket.getInputStream();
 
@@ -62,6 +86,8 @@ public class TcpClientRequestHandler implements ClientRequestHandler {
             String responseBody = readAll(inputStream);
             int statusCode = inferStatusCode(responseBody);
             return new RemoteInvocationResponse(statusCode, responseBody);
+        } catch (SocketTimeoutException exception) {
+            return timeoutResponse();
         } catch (IOException exception) {
             throw new RemotingException("Failed to send TCP request.", exception);
         }
@@ -103,5 +129,13 @@ public class TcpClientRequestHandler implements ClientRequestHandler {
         }
 
         return 500;
+    }
+
+    int getTimeoutMillis() {
+        return timeoutMillis;
+    }
+
+    private RemoteInvocationResponse timeoutResponse() {
+        return new RemoteInvocationResponse(504, REQUEST_TIMEOUT_BODY);
     }
 }

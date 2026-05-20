@@ -112,16 +112,17 @@ Comportamento atual para os nao implementados: `IllegalArgumentException` em reg
 ## 7) Aplicacao integrada (estado atual)
 
 Fluxo middleware atual (novo caminho):
-1. `validador.Main` sobe `Middleware + ValidadorService + HttpProtocolPlugin(8081)` e inicia heartbeat.
-2. `repositorio.Main` sobe `Middleware + RepositorioService + HttpProtocolPlugin(8082)` e inicia heartbeat.
-3. `gateway.Main` sobe `HeartbeatReceiver`, cria clients internos middleware (`MiddlewareValidadorClient`/`MiddlewareRepositorioClient`), registra `GatewayService` no middleware e expoe HTTP em `http://localhost:8080/gateway`.
+1. `validador.Main` sobe `Middleware + ValidadorService` com `HttpProtocolPlugin`, `TcpProtocolPlugin` ou `UdpProtocolPlugin`, conforme argumento, e inicia heartbeat.
+2. `repositorio.Main` sobe `Middleware + RepositorioService` com `HttpProtocolPlugin`, `TcpProtocolPlugin` ou `UdpProtocolPlugin`, conforme argumento, e inicia heartbeat.
+3. `gateway.Main` sobe `HeartbeatReceiver`, cria clients internos middleware (`MiddlewareValidadorClient`/`MiddlewareRepositorioClient`), registra `GatewayService` no middleware e expoe o gateway por HTTP, TCP ou UDP.
 4. Requisicao de negocio: `POST /gateway/precos`.
 5. `GatewayService` descobre endpoints por heartbeat, valida no validador e replica no repositorio via clients internos que usam `Requestor`.
 
 Heartbeat:
 - Receiver no gateway: `heartbeat.HeartbeatReceiver`.
 - Sender nos modulos downstream: `heartbeat.HeartbeatSender`.
-- Tipo anunciado suporta sufixo de protocolo (`tipoEntidade|middleware`) para preservar compatibilidade com discovery atual.
+- Tipo anunciado suporta sufixo de protocolo (`validador|http`, `validador|tcp`, `repositorio|udp`, etc.).
+- O gateway armazena instancias como `protocol://host:port` e chama cada uma pelo protocolo anunciado.
 
 ---
 
@@ -149,6 +150,7 @@ Heartbeat:
 - `gateway/client/MiddlewareValidadorClientTest.java`
 - `gateway/client/MiddlewareRepositorioClientTest.java`
 - `gateway/GatewayMiddlewareIntegrationTest.java`
+- `heartbeat/HeartbeatReceiverTest.java`
 
 ### validador-precos
 - `validador/ValidadorMiddlewareIntegrationTest.java`
@@ -165,13 +167,13 @@ Preferencia: executar em Git Bash para evitar problemas de quoting do `curl` no 
 ### Terminal 1 - Validador
 ```bash
 cd sistema-distribuido-precos/validador-precos
-mvn exec:java "-Dexec.mainClass=validador.Main"
+mvn exec:java "-Dexec.mainClass=validador.Main" "-Dexec.args=http 8081 localhost 9090"
 ```
 
 ### Terminal 2 - Repositorio
 ```bash
 cd sistema-distribuido-precos/repositorio-precos
-mvn exec:java "-Dexec.mainClass=repositorio.Main"
+mvn exec:java "-Dexec.mainClass=repositorio.Main" "-Dexec.args=http 8082 localhost 9090"
 ```
 
 ### Terminal 3 - Gateway via middleware
@@ -179,7 +181,7 @@ mvn exec:java "-Dexec.mainClass=repositorio.Main"
 cd sistema-distribuido-precos/api-gateway
 mvn -q -DskipTests package
 mvn -q dependency:copy-dependencies
-java -cp "target/classes;target/dependency/*" gateway.Main 8080 9090 100 http middleware
+java -cp "target/classes;target/dependency/*" gateway.Main http 8080 9090 100 http
 ```
 
 ### Terminal 4 - Requisicao valida
@@ -197,6 +199,48 @@ curl -X POST "http://localhost:8080/gateway/precos" \
 ```
 
 Esperado no invalido: envelope do middleware com `"success":true` e `result` contendo erro de negocio (ex.: `statusCode` 400 e mensagem de validacao).
+
+### Teste TCP manual
+Subir os mesmos cinco processos usando `tcp` como primeiro argumento:
+
+```bash
+java -cp "target/classes;target/dependency/*" gateway.Main tcp 8080 9090 100 tcp
+```
+
+Cliente manual:
+
+```bash
+{
+  printf 'REQUEST_ID req-tcp-cli-1\n'
+  printf 'METHOD POST\n'
+  printf 'PATH /gateway/precos\n'
+  printf 'QUERY\n'
+  printf 'BODY_LENGTH 57\n'
+  printf '\n'
+  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
+} | nc -N localhost 8080
+```
+
+### Teste UDP manual
+Subir os mesmos cinco processos usando `udp` como primeiro argumento:
+
+```bash
+java -cp "target/classes;target/dependency/*" gateway.Main udp 8080 9090 100 udp
+```
+
+Cliente manual:
+
+```bash
+{
+  printf 'REQUEST_ID req-udp-cli-1\n'
+  printf 'METHOD POST\n'
+  printf 'PATH /gateway/precos\n'
+  printf 'QUERY\n'
+  printf 'BODY_LENGTH 57\n'
+  printf '\n'
+  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
+} | nc -u -w 2 localhost 8080
+```
 
 ---
 
@@ -239,27 +283,43 @@ Status: execucao JMeter ainda pendente nesta revisao.
 
 ## 11) Lacunas e riscos reais
 
-1. Java version entre modulos
+0. Controle de saturacao server-side no gateway
+- O `api-gateway` usa configuracao fixa no plugin de protocolo: `300` workers e fila de `1000`.
+- O `validador-precos` usa limite controlado: `40` workers e fila de `80`.
+- O `repositorio-precos` usa limite maior que validador para nao ser o primeiro gargalo: `100` workers e fila de `300`.
+- Quando a fila satura, o middleware responde imediatamente com `503` e erro `SERVER_BUSY`.
+- Isso evita espera indefinida na entrada do gateway e ajuda a demonstrar efeito de perda de capacidade no validador durante carga (JMeter).
+
+1. Timeout interno do gateway
+- O `api-gateway` define timeout fixo de `3000ms` para chamadas internas a validador/repositorio.
+- O valor fica em `gateway.Main` (`INTERNAL_CLIENT_TIMEOUT_MILLIS`) e nao e argumento de linha de comando.
+- O timeout e repassado para `Requestor(timeoutMillis)`, que aplica nos handlers HTTP/TCP/UDP do middleware-core.
+- Para campanha JMeter HTTP, configure:
+  - Connect Timeout: `1000ms`
+  - Response Timeout: `>= 5000ms`
+  Assim o gateway consegue devolver falha controlada (ex.: `REQUEST_TIMEOUT`) sem bloquear indefinidamente.
+
+2. Java version entre modulos
 - `middleware-core` compila em Java 17.
 - Modulos da aplicacao (`api-gateway`, `validador-precos`, `repositorio-precos`) estao com `maven.compiler.source/target` em 21.
 - Risco: divergencia com regra de Java 17 do enunciado; verificar criterio formal de entrega.
 
-2. gRPC fora do escopo atual
+3. gRPC fora do escopo atual
 - A remocao de gRPC foi uma decisao de escopo para simplificar a entrega baseada em middleware.
 - Risco baixo: garantir apenas que scripts e documentos usados na apresentacao sigam o fluxo oficial `gateway.Main` + `validador.Main` + `repositorio.Main`.
 
-3. Quoting de curl no Windows PowerShell
+4. Quoting de curl no Windows PowerShell
 - Risco de falha de parsing de JSON em linha de comando.
 - Mitigacao: usar Git Bash (ou ajustar quoting no PowerShell).
 
-4. Possivel lock em `target/` no Windows durante `mvn clean`
+5. Possivel lock em `target/` no Windows durante `mvn clean`
 - Risco intermitente por processo Java ainda ativo.
 - Mitigacao: encerrar processos em portas de teste antes do clean.
 
-5. JMeter ainda nao executado nesta revisao
+6. JMeter ainda nao executado nesta revisao
 - Risco: falta de evidencias de capacidade (knee/usable) ate a campanha de carga.
 
-6. Lifecycle parcial por design
+7. Lifecycle parcial por design
 - `CLIENT_DEPENDENT_INSTANCE`, `LEASING`, `PASSIVATION` estao declarados no enum mas nao implementados no registry.
 - Risco: expectativa de cobertura completa de lifecycle, se o avaliador exigir todos os tipos.
 

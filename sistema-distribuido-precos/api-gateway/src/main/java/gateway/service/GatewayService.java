@@ -9,13 +9,13 @@ import gateway.client.*;
 import gateway.model.*;
 
 import heartbeat.HeartbeatReceiver;
+import heartbeat.HeartbeatReceiver.ServiceInstance;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RemoteComponent("gateway")
@@ -81,18 +81,30 @@ public class GatewayService {
 
     private ValidationAttempt validate(PrecoPayload preco, List<RemoteEndpoint> validadores) {
         int startIndex = Math.floorMod(nextValidadorIndex.getAndIncrement(), validadores.size());
+        boolean timeoutDetected = false;
         for (int attempt = 0; attempt < validadores.size(); attempt++) {
             RemoteEndpoint validador = validadores.get((startIndex + attempt) % validadores.size());
             try {
-                ValidationClientResult result = validadorClient.validar(validador.host(), validador.port(), preco);
+                ValidationClientResult result = validadorClient.validar(
+                        validador.protocol(),
+                        validador.host(),
+                        validador.port(),
+                        preco
+                );
                 if (result.valid()) {
                     return ValidationAttempt.accepted();
                 }
                 return ValidationAttempt.invalid(result.mensagem());
             } catch (IOException e) {
+                if (isTimeoutMessage(e.getMessage())) {
+                    timeoutDetected = true;
+                }
             }
         }
-        return ValidationAttempt.unavailable("FALHA_AO_VALIDAR");
+        if (timeoutDetected) {
+            return ValidationAttempt.unavailable("TIMEOUT_VALIDADOR");
+        }
+        return ValidationAttempt.unavailable("SEM_VALIDADOR_DISPONIVEL");
     }
 
     private int replicate(PrecoPayload preco, List<RemoteEndpoint> repositorios) {
@@ -100,7 +112,12 @@ public class GatewayService {
 
         for (RemoteEndpoint repositorio : repositorios) {
             try {
-                StorageClientResult result = repositorioClient.armazenar(repositorio.host(), repositorio.port(), preco);
+                StorageClientResult result = repositorioClient.armazenar(
+                        repositorio.protocol(),
+                        repositorio.host(),
+                        repositorio.port(),
+                        preco
+                );
                 if (result.success()) {
                     sucessos++;
                 }
@@ -114,45 +131,20 @@ public class GatewayService {
     private List<RemoteEndpoint> snapshotEndpoints(Map<String, Long> instances) {
         List<RemoteEndpoint> endpoints = new ArrayList<>();
         for (String key : instances.keySet()) {
-            RemoteEndpoint endpoint = RemoteEndpoint.fromKey(key);
-            if (endpoint != null) {
-                endpoints.add(endpoint);
-            }
+            RemoteEndpoint.fromKey(key).ifPresent(endpoints::add);
         }
         endpoints.sort(Comparator.comparing(RemoteEndpoint::address));
         return endpoints;
     }
 
-    private String formatEndpoints(List<RemoteEndpoint> endpoints) {
-        if (endpoints.isEmpty()) {
-            return "[]";
-        }
-
-        StringJoiner joiner = new StringJoiner(", ", "[", "]");
-        for (RemoteEndpoint endpoint : endpoints) {
-            joiner.add(endpoint.address());
-        }
-        return joiner.toString();
-    }
-
-    private record RemoteEndpoint(String host, int port) {
-        private static RemoteEndpoint fromKey(String key) {
-            int separatorIndex = key.lastIndexOf(':');
-            if (separatorIndex <= 0 || separatorIndex == key.length() - 1) {
-                return null;
-            }
-
-            try {
-                String host = key.substring(0, separatorIndex);
-                int port = Integer.parseInt(key.substring(separatorIndex + 1));
-                return new RemoteEndpoint(host, port);
-            } catch (NumberFormatException e) {
-                return null;
-            }
+    private record RemoteEndpoint(String protocol, String host, int port) {
+        private static java.util.Optional<RemoteEndpoint> fromKey(String key) {
+            return ServiceInstance.fromKey(key)
+                    .map(instance -> new RemoteEndpoint(instance.protocol(), instance.host(), instance.port()));
         }
 
         private String address() {
-            return host + ":" + port;
+            return protocol + "://" + host + ":" + port;
         }
     }
 
@@ -168,5 +160,13 @@ public class GatewayService {
         private static ValidationAttempt unavailable(String message) {
             return new ValidationAttempt(false, false, message);
         }
+    }
+
+    private boolean isTimeoutMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String normalized = message.trim().toUpperCase();
+        return normalized.contains("REQUEST_TIMEOUT") || normalized.contains("TIMEOUT");
     }
 }

@@ -9,6 +9,8 @@ import gateway.model.StorageClientResult;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -73,9 +75,51 @@ class MiddlewareRepositorioClientTest {
         );
     }
 
+    @Test
+    void shouldBuildReferenceWithAnnouncedProtocol() throws Exception {
+        FakeRequestor requestor = new FakeRequestor(
+                new RemoteInvocationResponse(
+                        200,
+                        "{\"success\":true,\"statusCode\":200,\"result\":{\"success\":true,\"mensagem\":\"ARMAZENADO\"}}"
+                )
+        );
+        MiddlewareRepositorioClient client = new MiddlewareRepositorioClient(requestor, new ObjectMapper());
+
+        client.armazenar("tcp", "localhost", 8082, new PrecoPayload("PETR4", 35.5, 1710000000000L));
+        assertEquals("tcp://localhost:8082/repositorio", requestor.lastReference.toUri().toString());
+
+        client.armazenar("udp", "localhost", 8082, new PrecoPayload("PETR4", 35.5, 1710000000000L));
+        assertEquals("udp://localhost:8082/repositorio", requestor.lastReference.toUri().toString());
+    }
+
+    @Test
+    void shouldCreateRequestorWithProvidedTimeout() throws Exception {
+        MiddlewareRepositorioClient client = new MiddlewareRepositorioClient(3000);
+
+        Field requestorField = MiddlewareRepositorioClient.class.getDeclaredField("requestor");
+        requestorField.setAccessible(true);
+        Requestor requestor = (Requestor) requestorField.get(client);
+
+        Field handlersField = Requestor.class.getDeclaredField("handlersByProtocol");
+        handlersField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> handlers = (Map<String, Object>) handlersField.get(requestor);
+
+        assertEquals(3000, readTimeoutField(handlers.get("http")));
+        assertEquals(3000, readTimeoutField(handlers.get("tcp")));
+        assertEquals(3000, readTimeoutField(handlers.get("udp")));
+    }
+
+    private int readTimeoutField(Object handler) throws Exception {
+        Field timeoutField = handler.getClass().getDeclaredField("timeoutMillis");
+        timeoutField.setAccessible(true);
+        return timeoutField.getInt(handler);
+    }
+
     private static final class FakeRequestor extends Requestor {
         private final RemoteInvocationResponse response;
         private final RuntimeException runtimeException;
+        private AbsoluteObjectReference lastReference;
 
         private FakeRequestor(RemoteInvocationResponse response) {
             this.response = response;
@@ -92,6 +136,7 @@ class MiddlewareRepositorioClientTest {
             if (runtimeException != null) {
                 throw runtimeException;
             }
+            this.lastReference = reference;
             return response;
         }
     }

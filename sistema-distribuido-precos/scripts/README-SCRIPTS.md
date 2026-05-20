@@ -1,30 +1,38 @@
 # Scripts de Apresentacao
 
-Os scripts desta pasta foram simplificados para o fluxo oficial baseado em middleware.
+Os scripts desta pasta sobem o fluxo oficial baseado no `middleware-core`.
 
 ## Como executar
 
-Abra um terminal na raiz de `sistema-distribuido-precos` e rode:
+Abra um terminal na raiz de `sistema-distribuido-precos` e rode um dos scripts:
 
 ```bat
 scripts\start-http.bat
+scripts\start-tcp.bat
+scripts\start-udp.bat
 ```
 
-Este script sobe o fluxo middleware completo (gateway + validadores + repositorios).
-
-Para encerrar todas as janelas abertas:
+Para encerrar as janelas abertas:
 
 ```bat
 scripts\stop-all.bat
 ```
 
-## O que o script start abre
+## Execucao JMeter (opcional)
+
+```bat
+scripts\run-jmeter-http.bat [threads] [rampup] [loops] [host] [port]
+scripts\run-jmeter-tcp.bat [threads] [rampup] [loops] [host] [port]
+scripts\run-jmeter-udp.bat [threads] [rampup] [loops] [host] [port] [timeoutMs]
+```
+
+## O que cada script abre
 
 - 1 gateway (`gateway.Main`)
 - 2 validadores (`validador.Main`)
 - 2 repositorios (`repositorio.Main`)
 
-Todos os processos usam middleware para comunicacao de negocio, e heartbeat para discovery.
+Todos usam middleware para comunicacao de negocio. O heartbeat continua ativo para discovery.
 
 ## Portas usadas
 
@@ -35,8 +43,8 @@ Todos os processos usam middleware para comunicacao de negocio, e heartbeat para
 - Repositorio 1 service: `8082`
 - Repositorio 2 service: `8083`
 
-## Observacoes
+## Testes manuais
 
-- Os scripts assumem que os modulos ja foram compilados.
-- Cada modulo precisa de `target/classes` e `target/dependency/*`.
-- Protocolos HTTP/TCP/UDP antigos da aplicacao foram removidos; os plug-ins de protocolo permanecem no `middleware-core`.
+- HTTP: `curl` em `POST http://localhost:8080/gateway/precos`.
+- TCP: `nc`/`ncat` com payload textual do middleware em `localhost:8080`.
+- UDP: `nc -u`/`ncat -u` com payload textual do middleware em `localhost:8080`.

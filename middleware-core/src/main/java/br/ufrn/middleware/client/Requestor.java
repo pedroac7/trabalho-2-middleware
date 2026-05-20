@@ -16,6 +16,13 @@ public class Requestor {
         registerHandler("udp", new UdpClientRequestHandler());
     }
 
+    public Requestor(int timeoutMillis) {
+        this.handlersByProtocol = new HashMap<>();
+        registerHandler("http", new HttpClientRequestHandler(timeoutMillis));
+        registerHandler("tcp", new TcpClientRequestHandler(timeoutMillis));
+        registerHandler("udp", new UdpClientRequestHandler(timeoutMillis));
+    }
+
     public Requestor(ClientRequestHandler clientRequestHandler) {
         if (clientRequestHandler == null) {
             throw new IllegalArgumentException("ClientRequestHandler must not be null.");

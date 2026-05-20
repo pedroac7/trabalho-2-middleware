@@ -3,8 +3,8 @@ setlocal
 
 set "SCRIPT_DIR=%~dp0"
 
-start "GATEWAY_MIDDLEWARE" cmd /k ""%SCRIPT_DIR%run-module.bat" "GATEWAY_MIDDLEWARE" "api-gateway" "gateway.Main" 8080 9090 100 http middleware"
-start "VALIDADOR1_MIDDLEWARE" cmd /k ""%SCRIPT_DIR%run-module.bat" "VALIDADOR1_MIDDLEWARE" "validador-precos" "validador.Main" 8081 127.0.0.1 9090 middleware"
-start "VALIDADOR2_MIDDLEWARE" cmd /k ""%SCRIPT_DIR%run-module.bat" "VALIDADOR2_MIDDLEWARE" "validador-precos" "validador.Main" 8084 127.0.0.1 9090 middleware"
-start "REPOSITORIO1_MIDDLEWARE" cmd /k ""%SCRIPT_DIR%run-module.bat" "REPOSITORIO1_MIDDLEWARE" "repositorio-precos" "repositorio.Main" 8082 127.0.0.1 9090 middleware"
-start "REPOSITORIO2_MIDDLEWARE" cmd /k ""%SCRIPT_DIR%run-module.bat" "REPOSITORIO2_MIDDLEWARE" "repositorio-precos" "repositorio.Main" 8083 127.0.0.1 9090 middleware"
+start "GATEWAY_HTTP" cmd /k ""%SCRIPT_DIR%run-module.bat" "GATEWAY_HTTP" "api-gateway" "gateway.Main" http 8080 9090 100 http"
+start "VALIDADOR1_HTTP" cmd /k ""%SCRIPT_DIR%run-module.bat" "VALIDADOR1_HTTP" "validador-precos" "validador.Main" http 8081 127.0.0.1 9090"
+start "VALIDADOR2_HTTP" cmd /k ""%SCRIPT_DIR%run-module.bat" "VALIDADOR2_HTTP" "validador-precos" "validador.Main" http 8084 127.0.0.1 9090"
+start "REPOSITORIO1_HTTP" cmd /k ""%SCRIPT_DIR%run-module.bat" "REPOSITORIO1_HTTP" "repositorio-precos" "repositorio.Main" http 8082 127.0.0.1 9090"
+start "REPOSITORIO2_HTTP" cmd /k ""%SCRIPT_DIR%run-module.bat" "REPOSITORIO2_HTTP" "repositorio-precos" "repositorio.Main" http 8083 127.0.0.1 9090"

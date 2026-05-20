@@ -4,9 +4,11 @@ import br.ufrn.middleware.error.RemotingException;
 import br.ufrn.middleware.identification.AbsoluteObjectReference;
 
 import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
+import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -14,17 +16,31 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public class HttpClientRequestHandler implements ClientRequestHandler {
+    private static final String REQUEST_TIMEOUT_BODY = "{\"success\":false,\"statusCode\":504,\"error\":\"REQUEST_TIMEOUT\"}";
     private final HttpClient httpClient;
+    private final int timeoutMillis;
 
     public HttpClientRequestHandler() {
-        this(HttpClient.newHttpClient());
+        this(HttpClient.newHttpClient(), 0);
+    }
+
+    public HttpClientRequestHandler(int timeoutMillis) {
+        this(buildHttpClient(timeoutMillis), timeoutMillis);
     }
 
     public HttpClientRequestHandler(HttpClient httpClient) {
+        this(httpClient, 0);
+    }
+
+    private HttpClientRequestHandler(HttpClient httpClient, int timeoutMillis) {
         if (httpClient == null) {
             throw new IllegalArgumentException("HttpClient must not be null.");
         }
+        if (timeoutMillis < 0) {
+            throw new IllegalArgumentException("timeoutMillis must not be negative.");
+        }
         this.httpClient = httpClient;
+        this.timeoutMillis = timeoutMillis;
     }
 
     @Override
@@ -40,6 +56,8 @@ public class HttpClientRequestHandler implements ClientRequestHandler {
             HttpResponse<String> response =
                     httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             return new RemoteInvocationResponse(response.statusCode(), response.body());
+        } catch (HttpTimeoutException exception) {
+            return timeoutResponse();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new RemotingException("HTTP request was interrupted.", exception);
@@ -50,8 +68,11 @@ public class HttpClientRequestHandler implements ClientRequestHandler {
 
     private HttpRequest buildHttpRequest(RemoteInvocationRequest request, URI uri) {
         String method = request.getHttpMethod();
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .header("X-Request-Id", request.getRequestId());
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri);
+        if (timeoutMillis > 0) {
+            builder.timeout(Duration.ofMillis(timeoutMillis));
+        }
+        builder.header("X-Request-Id", request.getRequestId());
 
         if ("GET".equals(method)) {
             return builder.GET().build();
@@ -120,5 +141,21 @@ public class HttpClientRequestHandler implements ClientRequestHandler {
         }
 
         return queryString.toString();
+    }
+
+    int getTimeoutMillis() {
+        return timeoutMillis;
+    }
+
+    private static HttpClient buildHttpClient(int timeoutMillis) {
+        HttpClient.Builder builder = HttpClient.newBuilder();
+        if (timeoutMillis > 0) {
+            builder.connectTimeout(Duration.ofMillis(timeoutMillis));
+        }
+        return builder.build();
+    }
+
+    private RemoteInvocationResponse timeoutResponse() {
+        return new RemoteInvocationResponse(504, REQUEST_TIMEOUT_BODY);
     }
 }

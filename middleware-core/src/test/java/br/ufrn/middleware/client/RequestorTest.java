@@ -4,6 +4,7 @@ import br.ufrn.middleware.identification.AbsoluteObjectReference;
 import br.ufrn.middleware.identification.ObjectId;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -101,5 +102,24 @@ class RequestorTest {
         assertThrows(IllegalArgumentException.class, () -> new RemoteInvocationRequest(
                 reference, "GET", "   ", Map.of(), null
         ));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void requestorWithTimeoutCreatesHandlersUsingProvidedTimeout() throws Exception {
+        Requestor requestor = new Requestor(1234);
+
+        Field handlersField = Requestor.class.getDeclaredField("handlersByProtocol");
+        handlersField.setAccessible(true);
+        Map<String, ClientRequestHandler> handlers =
+                (Map<String, ClientRequestHandler>) handlersField.get(requestor);
+
+        HttpClientRequestHandler httpHandler = (HttpClientRequestHandler) handlers.get("http");
+        TcpClientRequestHandler tcpHandler = (TcpClientRequestHandler) handlers.get("tcp");
+        UdpClientRequestHandler udpHandler = (UdpClientRequestHandler) handlers.get("udp");
+
+        assertEquals(1234, httpHandler.getTimeoutMillis());
+        assertEquals(1234, tcpHandler.getTimeoutMillis());
+        assertEquals(1234, udpHandler.getTimeoutMillis());
     }
 }

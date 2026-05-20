@@ -1,4 +1,4 @@
-Pré-requisito em cada módulo:
+Pre-requisito em cada modulo:
 mvn -q -DskipTests package
 mvn -q dependency:copy-dependencies
 
@@ -8,23 +8,28 @@ HTTP
 
 Gateway:
 cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main 8080 9090 http 100 http
+java -cp "target/classes;target/dependency/*" gateway.Main http 8080 9090 100 http
 
 Validador 1:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8081 127.0.0.1 9090 http http
+java -cp "target/classes;target/dependency/*" validador.Main http 8081 127.0.0.1 9090
 
 Validador 2:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8084 127.0.0.1 9090 http http
+java -cp "target/classes;target/dependency/*" validador.Main http 8084 127.0.0.1 9090
 
-Repositório 1:
+Repositorio 1:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8082 127.0.0.1 9090 http http
+java -cp "target/classes;target/dependency/*" repositorio.Main http 8082 127.0.0.1 9090
 
-Repositório 2:
+Repositorio 2:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8083 127.0.0.1 9090 http http
+java -cp "target/classes;target/dependency/*" repositorio.Main http 8083 127.0.0.1 9090
+
+Teste HTTP:
+curl -X POST "http://localhost:8080/gateway/precos" ^
+  -H "Content-Type: application/json" ^
+  --data-raw "{\"ativo\":\"PETR4\",\"valor\":35.50,\"timestamp\":1710000000000}"
 
 ==================================================
 TCP
@@ -32,23 +37,34 @@ TCP
 
 Gateway:
 cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main 8080 9090 tcp 100 tcp
+java -cp "target/classes;target/dependency/*" gateway.Main tcp 8080 9090 100 tcp
 
 Validador 1:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8081 127.0.0.1 9090 tcp tcp
+java -cp "target/classes;target/dependency/*" validador.Main tcp 8081 127.0.0.1 9090
 
 Validador 2:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8084 127.0.0.1 9090 tcp tcp
+java -cp "target/classes;target/dependency/*" validador.Main tcp 8084 127.0.0.1 9090
 
-Repositório 1:
+Repositorio 1:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8082 127.0.0.1 9090 tcp tcp
+java -cp "target/classes;target/dependency/*" repositorio.Main tcp 8082 127.0.0.1 9090
 
-Repositório 2:
+Repositorio 2:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8083 127.0.0.1 9090 tcp tcp
+java -cp "target/classes;target/dependency/*" repositorio.Main tcp 8083 127.0.0.1 9090
+
+Teste TCP:
+{
+  printf 'REQUEST_ID req-tcp-cli-1\n'
+  printf 'METHOD POST\n'
+  printf 'PATH /gateway/precos\n'
+  printf 'QUERY\n'
+  printf 'BODY_LENGTH 57\n'
+  printf '\n'
+  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
+} | nc -N localhost 8080
 
 ==================================================
 UDP
@@ -56,76 +72,62 @@ UDP
 
 Gateway:
 cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main 8080 9090 udp 100 udp
+java -cp "target/classes;target/dependency/*" gateway.Main udp 8080 9090 100 udp
 
 Validador 1:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8081 127.0.0.1 9090 udp udp
+java -cp "target/classes;target/dependency/*" validador.Main udp 8081 127.0.0.1 9090
 
 Validador 2:
 cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8084 127.0.0.1 9090 udp udp
+java -cp "target/classes;target/dependency/*" validador.Main udp 8084 127.0.0.1 9090
 
-Repositório 1:
+Repositorio 1:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8082 127.0.0.1 9090 udp udp
+java -cp "target/classes;target/dependency/*" repositorio.Main udp 8082 127.0.0.1 9090
 
-Repositório 2:
+Repositorio 2:
 cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8083 127.0.0.1 9090 udp udp
+java -cp "target/classes;target/dependency/*" repositorio.Main udp 8083 127.0.0.1 9090
+
+Teste UDP:
+{
+  printf 'REQUEST_ID req-udp-cli-1\n'
+  printf 'METHOD POST\n'
+  printf 'PATH /gateway/precos\n'
+  printf 'QUERY\n'
+  printf 'BODY_LENGTH 57\n'
+  printf '\n'
+  printf '%s' '{"ativo":"PETR4","valor":35.50,"timestamp":1710000000000}'
+} | nc -u -w 2 localhost 8080
 
 ==================================================
-gRPC
-==================================================
-
-Gateway:
-cd api-gateway
-java -cp "target/classes;target/dependency/*" gateway.Main 8080 9090 grpc 100 grpc
-
-Validador 1:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8081 127.0.0.1 9090 grpc grpc
-
-Validador 2:
-cd validador-precos
-java -cp "target/classes;target/dependency/*" validador.Main 8084 127.0.0.1 9090 grpc grpc
-
-Repositório 1:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8082 127.0.0.1 9090 grpc grpc
-
-Repositório 2:
-cd repositorio-precos
-java -cp "target/classes;target/dependency/*" repositorio.Main 8083 127.0.0.1 9090 grpc grpc
-
-==================================================
-SIGNIFICADO DOS PARÂMETROS
+SIGNIFICADO DOS PARAMETROS
 ==================================================
 
 Gateway:
-gateway.Main <businessPort> <heartbeatPort> <businessProtocol> <epsilonMs> <heartbeatProtocol>
+gateway.Main <gatewayProtocol> <gatewayPort> <heartbeatPort> <epsilonMs> <internalClientsProtocol>
 
 Exemplo:
-gateway.Main 8080 9090 http 100 http
+gateway.Main http 8080 9090 100 http
 
-- 8080 = porta de negócio
-- 9090 = porta de heartbeat
-- http = protocolo de negócio
-- 100 = epsilon do Clock-Bound Wait
-- http = protocolo do heartbeat
+- gatewayProtocol = protocolo de negocio exposto pelo gateway: http, tcp ou udp
+- gatewayPort = porta de negocio do gateway
+- heartbeatPort = porta do HeartbeatReceiver
+- epsilonMs = epsilon do Clock-Bound Wait
+- internalClientsProtocol = protocolo esperado para clients internos; na pratica o GatewayService usa o protocolo anunciado por heartbeat
 
-Validador / Repositório:
-validador.Main <businessPort> <gatewayHost> <gatewayHeartbeatPort> <businessProtocol> <heartbeatProtocol>
-repositorio.Main <businessPort> <gatewayHost> <gatewayHeartbeatPort> <businessProtocol> <heartbeatProtocol>
+Validador / Repositorio:
+validador.Main <serviceProtocol> <servicePort> <gatewayHost> <gatewayHeartbeatPort>
+repositorio.Main <serviceProtocol> <servicePort> <gatewayHost> <gatewayHeartbeatPort>
 
 Exemplo:
-validador.Main 8081 127.0.0.1 9090 tcp tcp
+validador.Main tcp 8081 127.0.0.1 9090
 
-- 8081 = porta de negócio da instância
-- 127.0.0.1 = host do gateway
-- 9090 = porta do heartbeat do gateway
-- tcp = protocolo de negócio
-- tcp = protocolo do heartbeat
+- serviceProtocol = protocolo de negocio anunciado no heartbeat: http, tcp ou udp
+- servicePort = porta de negocio da instancia
+- gatewayHost = host do gateway
+- gatewayHeartbeatPort = porta do HeartbeatReceiver do gateway
 
 ==================================================
 ORDEM RECOMENDADA
@@ -133,11 +135,6 @@ ORDEM RECOMENDADA
 
 1. Gateway
 2. Validadores
-3. Repositórios
+3. Repositorios
 
 Depois espere alguns segundos para os heartbeats estabilizarem antes de testar.
-"""
-path = "/mnt/data/comandos_componentes.txt"
-with open(path, "w", encoding="utf-8") as f:
-    f.write(content)
-print(path)

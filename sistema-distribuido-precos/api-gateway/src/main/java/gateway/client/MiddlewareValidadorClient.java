@@ -20,8 +20,16 @@ public class MiddlewareValidadorClient implements ValidadorClient {
         this(new Requestor(), new ObjectMapper(), null);
     }
 
+    public MiddlewareValidadorClient(int timeoutMillis) {
+        this(new Requestor(timeoutMillis), new ObjectMapper(), null);
+    }
+
     public MiddlewareValidadorClient(String baseUri) {
         this(new Requestor(), new ObjectMapper(), AbsoluteObjectReference.fromUri(baseUri));
+    }
+
+    public MiddlewareValidadorClient(String baseUri, int timeoutMillis) {
+        this(new Requestor(timeoutMillis), new ObjectMapper(), AbsoluteObjectReference.fromUri(baseUri));
     }
 
     MiddlewareValidadorClient(Requestor requestor, ObjectMapper objectMapper) {
@@ -46,8 +54,13 @@ public class MiddlewareValidadorClient implements ValidadorClient {
 
     @Override
     public ValidationClientResult validar(String host, int port, PrecoPayload preco) throws IOException {
+        return validar("http", host, port, preco);
+    }
+
+    @Override
+    public ValidationClientResult validar(String protocol, String host, int port, PrecoPayload preco) throws IOException {
         try {
-            AbsoluteObjectReference reference = resolveReference(host, port);
+            AbsoluteObjectReference reference = resolveReference(protocol, host, port);
             String json = objectMapper.writeValueAsString(preco);
             RemoteInvocationResponse response = requestor.post(reference, "/validar", json);
             MiddlewareResponseEnvelope envelope = MiddlewareResponseEnvelope.fromJson(objectMapper, response.getBody());
@@ -72,9 +85,12 @@ public class MiddlewareValidadorClient implements ValidadorClient {
         }
     }
 
-    private AbsoluteObjectReference resolveReference(String host, int port) {
+    private AbsoluteObjectReference resolveReference(String protocol, String host, int port) {
         if (fixedReference != null) {
             return fixedReference;
+        }
+        if (protocol == null || protocol.isBlank()) {
+            throw new IllegalArgumentException("Protocol must not be null or blank.");
         }
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("Host must not be null or blank.");
@@ -82,6 +98,6 @@ public class MiddlewareValidadorClient implements ValidadorClient {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
-        return AbsoluteObjectReference.fromUri("http://" + host + ":" + port + DEFAULT_COMPONENT_PATH);
+        return AbsoluteObjectReference.fromUri(protocol.trim().toLowerCase() + "://" + host + ":" + port + DEFAULT_COMPONENT_PATH);
     }
 }

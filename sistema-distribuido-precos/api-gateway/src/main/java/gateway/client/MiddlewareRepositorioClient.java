@@ -20,8 +20,16 @@ public class MiddlewareRepositorioClient implements RepositorioClient {
         this(new Requestor(), new ObjectMapper(), null);
     }
 
+    public MiddlewareRepositorioClient(int timeoutMillis) {
+        this(new Requestor(timeoutMillis), new ObjectMapper(), null);
+    }
+
     public MiddlewareRepositorioClient(String baseUri) {
         this(new Requestor(), new ObjectMapper(), AbsoluteObjectReference.fromUri(baseUri));
+    }
+
+    public MiddlewareRepositorioClient(String baseUri, int timeoutMillis) {
+        this(new Requestor(timeoutMillis), new ObjectMapper(), AbsoluteObjectReference.fromUri(baseUri));
     }
 
     MiddlewareRepositorioClient(Requestor requestor, ObjectMapper objectMapper) {
@@ -46,8 +54,13 @@ public class MiddlewareRepositorioClient implements RepositorioClient {
 
     @Override
     public StorageClientResult armazenar(String host, int port, PrecoPayload preco) throws IOException {
+        return armazenar("http", host, port, preco);
+    }
+
+    @Override
+    public StorageClientResult armazenar(String protocol, String host, int port, PrecoPayload preco) throws IOException {
         try {
-            AbsoluteObjectReference reference = resolveReference(host, port);
+            AbsoluteObjectReference reference = resolveReference(protocol, host, port);
             String json = objectMapper.writeValueAsString(preco);
             RemoteInvocationResponse response = requestor.post(reference, "/armazenar", json);
 
@@ -79,9 +92,12 @@ public class MiddlewareRepositorioClient implements RepositorioClient {
         }
     }
 
-    private AbsoluteObjectReference resolveReference(String host, int port) {
+    private AbsoluteObjectReference resolveReference(String protocol, String host, int port) {
         if (fixedReference != null) {
             return fixedReference;
+        }
+        if (protocol == null || protocol.isBlank()) {
+            throw new IllegalArgumentException("Protocol must not be null or blank.");
         }
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("Host must not be null or blank.");
@@ -89,6 +105,6 @@ public class MiddlewareRepositorioClient implements RepositorioClient {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
-        return AbsoluteObjectReference.fromUri("http://" + host + ":" + port + DEFAULT_COMPONENT_PATH);
+        return AbsoluteObjectReference.fromUri(protocol.trim().toLowerCase() + "://" + host + ":" + port + DEFAULT_COMPONENT_PATH);
     }
 }

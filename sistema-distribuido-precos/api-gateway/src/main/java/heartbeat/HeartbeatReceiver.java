@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.URI;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class HeartbeatReceiver {
@@ -132,15 +134,24 @@ public class HeartbeatReceiver {
             return;
         }
 
-        String chave = host + ":" + port;
-        String tipo = tipoRaw.toLowerCase();
+        int servicePort;
+        try {
+            servicePort = Integer.parseInt(port.trim());
+        } catch (NumberFormatException exception) {
+            return;
+        }
+
+        ServiceAnnouncement announcement = ServiceAnnouncement.parse(tipoRaw);
+        ServiceInstance instance = new ServiceInstance(host.trim(), servicePort, announcement.protocol());
+        String chave = instance.toKey();
+        String tipo = announcement.type();
         long agora = System.currentTimeMillis();
-        if (tipo.contains("validador")) {
+        if ("validador".equals(tipo)) {
             Long anterior = validadores.put(chave, agora);
             if (anterior == null) {
                 System.out.println("[Gateway] VALIDADOR REGISTRADO: " + chave);
             }
-        } else if (tipo.contains("repositorio")) {
+        } else if ("repositorio".equals(tipo)) {
             Long anterior = repositorios.put(chave, agora);
             if (anterior == null) {
                 System.out.println("[Gateway] REPOSITORIO REGISTRADO: " + chave);
@@ -233,5 +244,79 @@ public class HeartbeatReceiver {
     }
 
     private record HttpHeartbeatRequest(String requestLine, String body) {
+    }
+
+    public record ServiceAnnouncement(String type, String protocol) {
+        public static ServiceAnnouncement parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return new ServiceAnnouncement("", "http");
+            }
+
+            String[] parts = raw.split("\\|", 2);
+            String type = parts[0].trim().toLowerCase();
+            String protocol = parts.length > 1 ? parts[1] : "http";
+            return new ServiceAnnouncement(type, normalizeProtocol(protocol));
+        }
+    }
+
+    public record ServiceInstance(String host, int port, String protocol) {
+        public ServiceInstance {
+            if (host == null || host.isBlank()) {
+                throw new IllegalArgumentException("Host must not be blank.");
+            }
+            if (port < 1 || port > 65535) {
+                throw new IllegalArgumentException("Port must be between 1 and 65535.");
+            }
+            protocol = normalizeProtocol(protocol);
+            host = host.trim();
+        }
+
+        public String toKey() {
+            return protocol + "://" + host + ":" + port;
+        }
+
+        public static Optional<ServiceInstance> fromKey(String key) {
+            if (key == null || key.isBlank()) {
+                return Optional.empty();
+            }
+
+            String normalized = key.trim();
+            if (normalized.contains("://")) {
+                try {
+                    URI uri = URI.create(normalized);
+                    if (uri.getHost() == null || uri.getPort() < 1) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new ServiceInstance(uri.getHost(), uri.getPort(), uri.getScheme()));
+                } catch (IllegalArgumentException exception) {
+                    return Optional.empty();
+                }
+            }
+
+            int separatorIndex = normalized.lastIndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex == normalized.length() - 1) {
+                return Optional.empty();
+            }
+
+            try {
+                String host = normalized.substring(0, separatorIndex);
+                int port = Integer.parseInt(normalized.substring(separatorIndex + 1));
+                return Optional.of(new ServiceInstance(host, port, "http"));
+            } catch (NumberFormatException exception) {
+                return Optional.empty();
+            }
+        }
+    }
+
+    private static String normalizeProtocol(String protocol) {
+        if (protocol == null || protocol.isBlank()) {
+            return "http";
+        }
+
+        String normalized = protocol.trim().toLowerCase();
+        return switch (normalized) {
+            case "http", "tcp", "udp" -> normalized;
+            default -> "http";
+        };
     }
 }

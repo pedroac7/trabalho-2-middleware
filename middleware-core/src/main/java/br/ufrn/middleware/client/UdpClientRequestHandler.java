@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 public class UdpClientRequestHandler implements ClientRequestHandler {
     private static final int DEFAULT_TIMEOUT_MILLIS = 3000;
     private static final int DEFAULT_MAX_PACKET_SIZE = 8192;
+    private static final String REQUEST_TIMEOUT_BODY = "{\"success\":false,\"statusCode\":504,\"error\":\"REQUEST_TIMEOUT\"}";
     private static final Pattern STATUS_CODE_PATTERN = Pattern.compile("\"statusCode\"\\s*:\\s*(\\d+)");
 
     private final int timeoutMillis;
@@ -25,6 +26,10 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
 
     public UdpClientRequestHandler() {
         this(DEFAULT_TIMEOUT_MILLIS, DEFAULT_MAX_PACKET_SIZE, new SimpleTextInvocationRequestMarshaller());
+    }
+
+    public UdpClientRequestHandler(int timeoutMillis) {
+        this(timeoutMillis, DEFAULT_MAX_PACKET_SIZE, new SimpleTextInvocationRequestMarshaller());
     }
 
     public UdpClientRequestHandler(int timeoutMillis, int maxPacketSize) {
@@ -36,8 +41,8 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
             int maxPacketSize,
             InvocationRequestMarshaller invocationRequestMarshaller
     ) {
-        if (timeoutMillis <= 0) {
-            throw new IllegalArgumentException("timeoutMillis must be greater than zero.");
+        if (timeoutMillis < 0) {
+            throw new IllegalArgumentException("timeoutMillis must not be negative.");
         }
         if (maxPacketSize <= 0) {
             throw new IllegalArgumentException("maxPacketSize must be greater than zero.");
@@ -65,7 +70,9 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
         byte[] payload = buildPayload(request);
 
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.setSoTimeout(timeoutMillis);
+            if (timeoutMillis > 0) {
+                socket.setSoTimeout(timeoutMillis);
+            }
 
             DatagramPacket requestPacket = new DatagramPacket(
                     payload,
@@ -89,7 +96,7 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
             int statusCode = inferStatusCode(responseBody);
             return new RemoteInvocationResponse(statusCode, responseBody);
         } catch (SocketTimeoutException exception) {
-            throw new RemotingException("UDP request timed out after " + timeoutMillis + " ms.", exception);
+            return timeoutResponse();
         } catch (IOException exception) {
             throw new RemotingException("Failed to send UDP request.", exception);
         }
@@ -127,5 +134,13 @@ public class UdpClientRequestHandler implements ClientRequestHandler {
         }
 
         return 500;
+    }
+
+    int getTimeoutMillis() {
+        return timeoutMillis;
+    }
+
+    private RemoteInvocationResponse timeoutResponse() {
+        return new RemoteInvocationResponse(504, REQUEST_TIMEOUT_BODY);
     }
 }

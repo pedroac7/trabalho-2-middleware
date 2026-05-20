@@ -21,11 +21,19 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class TcpProtocolPlugin implements ProtocolPlugin {
+    private static final int DEFAULT_WORKER_THREADS = 20;
+    private static final int DEFAULT_QUEUE_CAPACITY = 1000;
+
     private final int port;
+    private final int workerThreads;
+    private final int queueCapacity;
     private final InvocationRequestMarshaller invocationRequestMarshaller;
 
     private ServerSocket serverSocket;
@@ -36,10 +44,22 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
     private ResponseMarshaller responseMarshaller;
 
     public TcpProtocolPlugin(int port) {
+        this(port, DEFAULT_WORKER_THREADS, DEFAULT_QUEUE_CAPACITY);
+    }
+
+    public TcpProtocolPlugin(int port, int workerThreads, int queueCapacity) {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("Port must be between 1 and 65535.");
         }
+        if (workerThreads <= 0) {
+            throw new IllegalArgumentException("workerThreads must be greater than zero.");
+        }
+        if (queueCapacity <= 0) {
+            throw new IllegalArgumentException("queueCapacity must be greater than zero.");
+        }
         this.port = port;
+        this.workerThreads = workerThreads;
+        this.queueCapacity = queueCapacity;
         this.invocationRequestMarshaller = new SimpleTextInvocationRequestMarshaller();
     }
 
@@ -62,7 +82,14 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
 
         try {
             this.serverSocket = new ServerSocket(port);
-            this.executor = Executors.newFixedThreadPool(20);
+            this.executor = new ThreadPoolExecutor(
+                    workerThreads,
+                    workerThreads,
+                    0L,
+                    TimeUnit.MILLISECONDS,
+                    new ArrayBlockingQueue<>(queueCapacity),
+                    new ThreadPoolExecutor.AbortPolicy()
+            );
             this.broker = broker;
             this.responseMarshaller = responseMarshaller;
             this.running = true;
@@ -101,7 +128,11 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
         while (running) {
             try {
                 Socket socket = serverSocket.accept();
-                executor.submit(() -> handleConnection(socket));
+                try {
+                    executor.execute(() -> handleConnection(socket));
+                } catch (RejectedExecutionException exception) {
+                    handleBusyConnection(socket);
+                }
             } catch (SocketException exception) {
                 if (running) {
                     throw new RemotingException("Socket error in TCP accept loop.", exception);
@@ -112,8 +143,14 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
                     throw new RemotingException("I/O error in TCP accept loop.", exception);
                 }
                 return;
-            } catch (RuntimeException ignored) {
             }
+        }
+    }
+
+    private void handleBusyConnection(Socket socket) {
+        try (Socket clientSocket = socket) {
+            writeErrorResponse(clientSocket.getOutputStream(), 503, "SERVER_BUSY");
+        } catch (IOException ignored) {
         }
     }
 
@@ -254,6 +291,7 @@ public class TcpProtocolPlugin implements ProtocolPlugin {
             case 200 -> "OK";
             case 400 -> "Bad Request";
             case 404 -> "Not Found";
+            case 503 -> "Service Unavailable";
             case 500 -> "Internal Server Error";
             default -> "Status";
         };
