@@ -1,5 +1,10 @@
 package gateway.service;
 
+import br.ufrn.middleware.annotations.Body;
+import br.ufrn.middleware.annotations.Lifecycle;
+import br.ufrn.middleware.annotations.RemoteComponent;
+import br.ufrn.middleware.annotations.RemoteMethod;
+import br.ufrn.middleware.lifecycle.LifecycleType;
 import gateway.client.*;
 import gateway.model.*;
 
@@ -13,6 +18,8 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 
+@RemoteComponent("gateway")
+@Lifecycle(LifecycleType.STATIC_INSTANCE)
 public class GatewayService {
     private static final int SOCKET_TIMEOUT_MS = 2000;
 
@@ -36,7 +43,8 @@ public class GatewayService {
         return SOCKET_TIMEOUT_MS;
     }
 
-    public GatewayResult process(PrecoPayload preco) {
+    @RemoteMethod(method = "POST", path = "/precos")
+    public GatewayResult process(@Body PrecoPayload preco) {
         List<RemoteEndpoint> validadores = snapshotEndpoints(heartbeatReceiver.getValidadores());
         if (validadores.isEmpty()) {
             return GatewayResult.error(503, "SEM_VALIDADOR_DISPONIVEL");

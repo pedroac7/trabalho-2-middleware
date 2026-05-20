@@ -10,6 +10,7 @@ public final class ValidadorClientFactory {
 
     public static ValidadorClient create(String protocolo, int timeoutMs) {
         return switch (protocolo.toLowerCase()) {
+            case "middleware" -> new MiddlewareValidadorClient();
             case "udp" -> new UdpValidadorClient(timeoutMs);
             case "tcp" -> new TcpValidadorClient(timeoutMs);
             case "http" -> new HttpValidadorClient(timeoutMs);
