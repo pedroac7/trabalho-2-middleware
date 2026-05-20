@@ -1,7 +1,6 @@
 package gateway.client;
 
 import gateway.model.*;
-import gateway.transport.*;
 
 import java.io.IOException;
 
