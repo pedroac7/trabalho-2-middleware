@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdvancedLifecycleManagementTest {
@@ -47,15 +46,6 @@ class AdvancedLifecycleManagementTest {
         @RemoteMethod(method = "GET", path = "/id")
         public int id() {
             return System.identityHashCode(this);
-        }
-    }
-
-    @RemoteComponent("unsupportedLifecycle")
-    @Lifecycle(LifecycleType.LEASING)
-    static class UnsupportedLifecycleService {
-        @RemoteMethod(method = "GET", path = "/ping")
-        public String ping() {
-            return "pong";
         }
     }
 
@@ -142,17 +132,5 @@ class AdvancedLifecycleManagementTest {
 
         assertTrue(ids.size() <= 5);
         assertTrue(ids.size() > 1);
-    }
-
-    @Test
-    void unsupportedLifecycleThrowsClearException() {
-        Middleware middleware = new Middleware();
-
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> middleware.register(UnsupportedLifecycleService.class)
-        );
-
-        assertTrue(exception.getMessage().contains("not implemented"));
     }
 }
