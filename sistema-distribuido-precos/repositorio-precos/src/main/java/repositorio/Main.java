@@ -47,8 +47,6 @@ public class Main {
         System.out.println("[Repositorio] Protocolo do servico: " + normalizeProtocol(serviceProtocol));
         System.out.println("[Repositorio] Servico remoto em " + normalizeProtocol(serviceProtocol) + "://localhost:" + servicePort + "/repositorio");
         System.out.println("[Repositorio] Endpoint: POST /repositorio/armazenar");
-        System.out.println("[Repositorio] Worker threads: " + REPOSITORIO_WORKER_THREADS);
-        System.out.println("[Repositorio] Capacidade da fila: " + REPOSITORIO_QUEUE_CAPACITY);
         System.out.println(
                 "[Repositorio] Heartbeat iniciado para gateway "
                         + gatewayHost + ":" + gatewayHeartbeatPort

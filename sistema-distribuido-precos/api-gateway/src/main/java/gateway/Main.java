@@ -49,9 +49,6 @@ public class Main {
         System.out.println("[Gateway] Protocolo do gateway: " + normalizeProtocol(gatewayProtocol));
         System.out.println("[Gateway] HeartbeatReceiver iniciado na porta " + heartbeatPort + " usando protocolo " + heartbeatProtocol);
         System.out.println("[Gateway] Clients internos configurados com protocolo " + internalClientsProtocol);
-        System.out.println("[Gateway] Timeout fixo dos clients internos: " + INTERNAL_CLIENT_TIMEOUT_MILLIS + "ms");
-        System.out.println("[Gateway] Worker threads do gateway: " + GATEWAY_WORKER_THREADS);
-        System.out.println("[Gateway] Capacidade da fila do gateway: " + GATEWAY_QUEUE_CAPACITY);
         System.out.println("[Gateway] EPSILON configurado em " + epsilonMillis + "ms");
         System.out.println("[Gateway] Gateway exposto via middleware em " + normalizeProtocol(gatewayProtocol) + "://localhost:" + gatewayServicePort + "/gateway");
         System.out.println("[Gateway] Endpoint: POST /gateway/precos");

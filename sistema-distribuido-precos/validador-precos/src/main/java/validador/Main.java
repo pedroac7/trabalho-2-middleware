@@ -47,8 +47,6 @@ public class Main {
         System.out.println("[Validador] Protocolo do servico: " + normalizeProtocol(serviceProtocol));
         System.out.println("[Validador] Servico remoto em " + normalizeProtocol(serviceProtocol) + "://localhost:" + servicePort + "/validador");
         System.out.println("[Validador] Endpoint: POST /validador/validar");
-        System.out.println("[Validador] Worker threads: " + VALIDADOR_WORKER_THREADS);
-        System.out.println("[Validador] Capacidade da fila: " + VALIDADOR_QUEUE_CAPACITY);
         System.out.println(
                 "[Validador] Heartbeat iniciado para gateway "
                         + gatewayHost + ":" + gatewayHeartbeatPort
