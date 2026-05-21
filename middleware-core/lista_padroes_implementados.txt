@@ -1,0 +1,36 @@
+- Broker
+
+Basic Remoting Patterns
+- Server Request Handler
+- Invoker
+- Marshaller
+- Remote Object
+- Remoting Error
+
+Identification Patterns
+- Lookup
+- Object Id
+- Absolute Object Reference
+
+Lifecycle Management 
+- Static Instance
+- Per-Request Instance
+
+Lifecycle Management 
+- Lazy Acquisition
+- Pooling
+
+Extension Patterns
+- Invocation Interceptor
+- Invocation Context
+- Protocol Plug-In
+  - HTTP
+  - TCP
+  - UDP
+
+Anotações criadas no middleware
+- @RemoteComponent
+- @RemoteMethod
+- @Param
+- @Body
+- @Lifecycle
